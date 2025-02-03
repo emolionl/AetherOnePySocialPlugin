@@ -61,7 +61,7 @@ def create_blueprint():
     api_url = f"{API_BASE_URL}/{API_VERSION}{ANALYSIS_ENDPOINT}"
 
     # CREATE
-    @social_blueprint.route('/key_create', methods=['POST'])
+    @social_blueprint.route('/key', methods=['POST'])
     def create_analysis_key():
         try:
             data = request.get_json()
@@ -78,7 +78,7 @@ def create_blueprint():
             
             # Create metadata with timestamp
             metadata = json.dumps({
-                "created_from": "key_create_endpoint",
+                "created_from": "key_endpoint",
                 "timestamp": datetime.now().isoformat()
             })
             
@@ -113,7 +113,7 @@ def create_blueprint():
             }), 500
 
     # READ
-    @social_blueprint.route('/key_list/<int:user_id>', methods=['GET'])
+    @social_blueprint.route('/key/<int:user_id>', methods=['GET'])
     def get_user_analysis_keys(user_id):
         try:
             # Get all keys for the user
@@ -135,7 +135,7 @@ def create_blueprint():
                 "message": str(e)
             }), 500
 
-    @social_blueprint.route('/key_get/<string:key>', methods=['GET'])
+    @social_blueprint.route('/key/<string:key>', methods=['GET'])
     def get_analysis_key(key):
         try:
             key_data = social_db.get_analysis_key(key)
@@ -160,7 +160,7 @@ def create_blueprint():
             }), 500
 
     # UPDATE
-    @social_blueprint.route('/key_update/<string:key>', methods=['PUT'])
+    @social_blueprint.route('/key/<string:key>', methods=['PUT'])
     def update_analysis_key(key):
         try:
             data = request.get_json()
@@ -196,7 +196,7 @@ def create_blueprint():
             }), 500
 
     # DELETE
-    @social_blueprint.route('/key_delete/<string:key>', methods=['DELETE'])
+    @social_blueprint.route('/key/<string:key>', methods=['DELETE'])
     def delete_analysis_key(key):
         try:
             if social_db.delete_analysis_key(key):
