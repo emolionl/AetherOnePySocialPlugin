@@ -8,6 +8,11 @@ from rich.pretty import pprint as rpprint
 from icecream import ic
 from .database import SocialDatabase
 import uuid
+from dotenv import load_dotenv
+import os
+
+# Load environment variables from .env file
+load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
 
 def p(obj, title="Debug Object"):
     """
@@ -47,8 +52,16 @@ def create_blueprint():
     db = get_case_dao('data/aetherone.db')
     social_db = SocialDatabase('data/social.db')
 
+    # Get API configuration from environment variables
+    API_BASE_URL = os.getenv('API_BASE_URL')
+    API_VERSION = os.getenv('API_VERSION')
+    ANALYSIS_ENDPOINT = os.getenv('ANALYSIS_ENDPOINT')
+    
+    # Construct full API URL
+    api_url = f"{API_BASE_URL}/{API_VERSION}{ANALYSIS_ENDPOINT}"
+
     # CREATE
-    @social_blueprint.route('/user_analyse_key', methods=['POST'])
+    @social_blueprint.route('/key_create', methods=['POST'])
     def create_analysis_key():
         try:
             data = request.get_json()
@@ -63,10 +76,9 @@ def create_blueprint():
                     "message": "user_id, analysis_id, machine_id and key are required"
                 }), 400
             
-            
             # Create metadata with timestamp
             metadata = json.dumps({
-                "created_from": "user_analyse_key_endpoint",
+                "created_from": "key_create_endpoint",
                 "timestamp": datetime.now().isoformat()
             })
             
@@ -101,7 +113,7 @@ def create_blueprint():
             }), 500
 
     # READ
-    @social_blueprint.route('/user_analyse_keys/<int:user_id>', methods=['GET'])
+    @social_blueprint.route('/key_list/<int:user_id>', methods=['GET'])
     def get_user_analysis_keys(user_id):
         try:
             # Get all keys for the user
@@ -123,10 +135,11 @@ def create_blueprint():
                 "message": str(e)
             }), 500
 
-    @social_blueprint.route('/analyse_key/<string:key>', methods=['GET'])
+    @social_blueprint.route('/key_get/<string:key>', methods=['GET'])
     def get_analysis_key(key):
         try:
             key_data = social_db.get_analysis_key(key)
+
             
             if not key_data:
                 return jsonify({
@@ -147,7 +160,7 @@ def create_blueprint():
             }), 500
 
     # UPDATE
-    @social_blueprint.route('/analyse_key/<string:key>', methods=['PUT'])
+    @social_blueprint.route('/key_update/<string:key>', methods=['PUT'])
     def update_analysis_key(key):
         try:
             data = request.get_json()
@@ -183,7 +196,7 @@ def create_blueprint():
             }), 500
 
     # DELETE
-    @social_blueprint.route('/analyse_key/<string:key>', methods=['DELETE'])
+    @social_blueprint.route('/key_delete/<string:key>', methods=['DELETE'])
     def delete_analysis_key(key):
         try:
             if social_db.delete_analysis_key(key):
@@ -205,7 +218,7 @@ def create_blueprint():
             }), 500
 
     # Additional utility endpoints
-    @social_blueprint.route('/analyse_keys/cleanup', methods=['POST'])
+    @social_blueprint.route('/keys/cleanup', methods=['POST'])
     def cleanup_keys():
         try:
             count = social_db.cleanup_expired_keys()
@@ -221,7 +234,7 @@ def create_blueprint():
                 "message": str(e)
             }), 500
 
-    @social_blueprint.route('/share_analysis', methods=['POST'])
+    @social_blueprint.route('/analysis', methods=['POST'])
     def share_analysis():
         data = request.get_json()
         session_id = data.get('session_id')
@@ -357,7 +370,7 @@ def create_blueprint():
             })
             # Send to external API
             response = requests.post(
-                "https://your-external-api.com/analysis",
+                api_url,
                 json=analysis_data
             )
             response.raise_for_status()
