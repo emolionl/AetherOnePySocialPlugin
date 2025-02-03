@@ -1,0 +1,141 @@
+{
+    "info": {
+        "name": "AetherOnePySocial API",
+        "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    },
+    "item": [
+        {
+            "name": "Auth",
+            "item": [
+                {
+                    "name": "Register User",
+                    "request": {
+                        "method": "POST",
+                        "url": "{{base_url}}/api/auth/register",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"username\": \"testuser\",\n    \"email\": \"test@example.com\",\n    \"password\": \"password123\"\n}"
+                        }
+                    }
+                },
+                {
+                    "name": "Login",
+                    "request": {
+                        "method": "POST",
+                        "url": "{{base_url}}/api/auth/login",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"email\": \"test@example.com\",\n    \"password\": \"password123\"\n}"
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "name": "Sessions",
+            "item": [
+                {
+                    "name": "Create Session",
+                    "request": {
+                        "method": "POST",
+                        "url": "{{base_url}}/api/sessions",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"key_id\": 1,\n    \"user_id\": 1,\n    \"machine_id\": 1\n}"
+                        }
+                    }
+                },
+                {
+                    "name": "Get All Sessions",
+                    "request": {
+                        "method": "GET",
+                        "url": "{{base_url}}/api/sessions"
+                    }
+                }
+            ]
+        },
+        {
+            "name": "Rate Analysis",
+            "item": [
+                {
+                    "name": "Create Rate",
+                    "request": {
+                        "method": "POST",
+                        "url": "{{base_url}}/api/rates",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"signature\": \"test_signature\",\n    \"description\": \"test description\",\n    \"catalog_id\": 1,\n    \"analysis_id\": 1,\n    \"energetic_value\": 100,\n    \"gv\": 50,\n    \"level\": 1,\n    \"potencyType\": \"high\",\n    \"potency\": 10\n}"
+                        }
+                    }
+                },
+                {
+                    "name": "Get All Rates",
+                    "request": {
+                        "method": "GET",
+                        "url": "{{base_url}}/api/rates"
+                    }
+                }
+            ]
+        },
+        {
+            "name": "Catalog",
+            "item": [
+                {
+                    "name": "Create Catalog Entry",
+                    "request": {
+                        "method": "POST",
+                        "url": "{{base_url}}/api/catalog",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"name\": \"Test Catalog\",\n    \"description\": \"Test Description\"\n}"
+                        }
+                    }
+                },
+                {
+                    "name": "Get All Catalog Entries",
+                    "request": {
+                        "method": "GET",
+                        "url": "{{base_url}}/api/catalog"
+                    }
+                }
+            ]
+        }
+    ],
+    "variable": [
+        {
+            "key": "base_url",
+            "value": "http://localhost:8000",
+            "type": "string"
+        }
+    ]
+}
