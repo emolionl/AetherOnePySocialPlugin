@@ -4,18 +4,21 @@ from typing import List
 
 class SocialDatabase:
     def __init__(self, db_path: str):
+        print(f"[DEBUG] Initializing SocialDatabase at {db_path}")
         self.db_path = db_path
         self.conn = sqlite3.connect(db_path, check_same_thread=False)
         self.conn.row_factory = sqlite3.Row
         self.create_tables()
 
     def create_tables(self):
+        print("[DEBUG] Creating tables in SocialDatabase if not exist")
         cursor = self.conn.cursor()
         
         # Create users table
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                server_user_id INTEGER NOT NULL,
                 username TEXT NOT NULL,
                 email TEXT UNIQUE NOT NULL,
                 token TEXT,
@@ -41,17 +44,20 @@ class SocialDatabase:
 
         self.conn.commit()
 
-    def save_user(self, username: str, email: str, token: str = None) -> int:
+    def save_user(self, username: str, email: str, token: str, server_user_id: int) -> int:
         cursor = self.conn.cursor()
+        print(f"[DEBUG] Saving user: {username}, {email}, {token}, {server_user_id}")
         cursor.execute('''
-            INSERT OR REPLACE INTO users (username, email, token)
-            VALUES (?, ?, ?)
-        ''', (username, email, token))
+            INSERT OR REPLACE INTO users (username, email, token, server_user_id)
+            VALUES (?, ?, ?, ?)
+        ''', (username, email, token, server_user_id))
         self.conn.commit()
+        print(f"[DEBUG] User saved: {cursor.lastrowid}")
         return cursor.lastrowid
 
     def update_user_token(self, email: str, token: str) -> bool:
         cursor = self.conn.cursor()
+        print(f"[DEBUG] Updating user token: {email}, {token}")
         cursor.execute('''
             UPDATE users SET token = ? WHERE email = ?
         ''', (token, email))
@@ -63,16 +69,29 @@ class SocialDatabase:
         cursor.execute('SELECT * FROM users WHERE email = ?', (email,))
         row = cursor.fetchone()
         return dict(row) if row else None
+    
+    def get_only_user(self) -> dict: # only one user allowed in the users table, because there is not need for multiple users
+        cursor = self.conn.cursor()
+        cursor.execute('SELECT * FROM users ORDER BY id DESC LIMIT 1')
+        row = cursor.fetchone()
+        return dict(row) if row else None
+
+    def get_user_token(self, email: str) -> str:
+        cursor = self.conn.cursor()
+        cursor.execute('SELECT token FROM users WHERE email = ?', (email,))
+        row = cursor.fetchone()
+        return row['token'] if row else None
 
     # Analysis Keys CRUD operations
-    def create_analysis_key(self, key_id: int, key: str, analysis_id: int, user_id: int, 
+    def create_analysis_key(self, key_id: int, key: str, session_id: int, user_id: int, 
                           expires_at: datetime = None, metadata: str = None) -> int:
         """Create a new analysis key"""
         cursor = self.conn.cursor()
+        print(f"key_id: {key_id}, key: {key}, session_id: {session_id}, user_id: {user_id}, expires_at: {expires_at}, metadata: {metadata}")
         cursor.execute('''
-            INSERT INTO analysis_keys (key_id, key, analysis_id, user_id, expires_at, metadata)
+            INSERT INTO analysis_keys (key_id, key, session_id, user_id, expires_at, metadata)
             VALUES (?, ?, ?, ?, ?, ?)
-        ''', (key_id, key, analysis_id, user_id, expires_at, metadata))
+        ''', (key_id, key, session_id, user_id, expires_at, metadata))
         self.conn.commit()
         return cursor.lastrowid
 
@@ -169,4 +188,30 @@ class SocialDatabase:
         return cursor.rowcount
 
     def close(self):
-        self.conn.close() 
+        self.conn.close()
+
+    def upsert_user_token(self, username: str, email: str, token: str, server_user_id: int = None) -> bool:
+        """
+        Only one user can exist in the users table. If a user exists, update it with the new info. Else, insert the user.
+        """
+        cursor = self.conn.cursor()
+        cursor.execute('SELECT id FROM users') # only one user allowed in the users table, because there is not need for multiple users
+        row = cursor.fetchone()
+        if row:
+            # User exists, update all fields
+            update_fields = 'username = ?, email = ?, token = ?'
+            params = [username, email, token]
+            if server_user_id is not None:
+                update_fields += ', server_user_id = ?'
+                params.append(server_user_id)
+            cursor.execute(f'UPDATE users SET {update_fields} WHERE id = ?', params + [row['id']])
+        else:
+            # No user exists, insert new
+            cursor.execute('''
+                INSERT INTO users (username, email, token{server_id}) VALUES (?, ?, ?{server_id_val})
+            '''.format(
+                server_id=', server_user_id' if server_user_id is not None else '',
+                server_id_val=', ?' if server_user_id is not None else ''
+            ), ([username, email, token] + ([server_user_id] if server_user_id is not None else [])))
+        self.conn.commit()
+        return True 

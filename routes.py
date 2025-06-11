@@ -1,4 +1,4 @@
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, current_app
 import requests
 from services.databaseService import get_case_dao
 from datetime import datetime
@@ -13,6 +13,10 @@ import os
 
 # Load environment variables from .env file
 load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
+
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..'))
+db_path = os.path.join(PROJECT_ROOT, 'data', 'aetherone.db')
+db = get_case_dao(db_path)
 
 def p(obj, title="Debug Object"):
     """
@@ -46,11 +50,12 @@ def p(obj, title="Debug Object"):
                 
 
 def create_blueprint():
+    print("[DEBUG] Creating AetherOnePySocial blueprint...")
     social_blueprint = Blueprint('social', __name__)
     
     # Initialize databases
-    db = get_case_dao('data/aetherone.db')
-    social_db = SocialDatabase('data/social.db')
+    social_db_path = os.path.join(os.path.dirname(__file__), 'social.db')
+    social_db = SocialDatabase(social_db_path)
 
     # Get API configuration from environment variables
     API_BASE_URL = os.getenv('API_BASE_URL')
@@ -58,24 +63,65 @@ def create_blueprint():
     ANALYSIS_ENDPOINT = os.getenv('ANALYSIS_ENDPOINT')
     
     # Construct full API URL
-    api_url = f"{API_BASE_URL}/{API_VERSION}{ANALYSIS_ENDPOINT}"
+    api_url = f"{API_BASE_URL}/"
+    login_url = f"{API_BASE_URL}/api/auth/login"
+    register_url = f"{API_BASE_URL}/api/auth/register"
+    logout_url = f"{API_BASE_URL}/api/auth/logout" # needs to be made on serverside logout endpoint
+    key_url = f"{API_BASE_URL}/api/keys"
+    analysis_url = f"{API_BASE_URL}/api/analysis/share"
+    cleanup_data = f"{API_BASE_URL}/api/utils/clear-data"
+
+    # --- Auth helper functions ---
+    def login_to_server(email, password, login_url):
+        response = requests.post(login_url, data={
+            "username": email,
+            "password": password
+        })
+        response.raise_for_status()
+        social_db.upsert_user_token(
+            response.json().get("username"),
+            response.json().get("email"), 
+            response.json().get("access_token"),
+            response.json().get("user_id"),
+        )
+        return response.json().get("access_token")
+
+    def send_key_to_server(key_data, api_url, token):
+        headers = {"Authorization": f"Bearer {token}"}
+        response = requests.post(api_url, json=key_data, headers=headers)
+        response.raise_for_status()
+        return response.json()
 
     # CREATE
     @social_blueprint.route('/key', methods=['POST'])
     def create_analysis_key():
         try:
             data = request.get_json()
-            user_id = data.get('user_id')
-            analysis_id = data.get('analysis_id')
-            machine_id = data.get('machine_id')
-            key = data.get('key')
-            
-            if not user_id or not analysis_id or not machine_id or not key:
+            user = social_db.get_only_user()
+            if not user:
                 return jsonify({
                     "status": "error",
-                    "message": "user_id, analysis_id, machine_id and key are required"
+                    "message": "No user found. Please login."
+                }), 401
+            server_user_id = user.get('server_user_id')
+            local_session_id = data.get('local_session_id')
+            token = user.get('token')
+            if not all([server_user_id, local_session_id, token]):
+                return jsonify({
+                    "status": "error",
+                    "message": "server_user_id, local_session_id, and token are required"
                 }), 400
-            
+            key_data = {
+                "user_id": server_user_id,
+                "local_session_id": local_session_id
+            }
+            # Forward to external server
+            result = send_key_to_server(key_data, key_url, token)
+            key = result.get('key')
+            key_id = result.get('key_id')
+            session_id = result.get('local_session_id') #local session_id from aetherone sessions
+            user_id = result.get('user_id')
+
             # Create metadata with timestamp
             metadata = json.dumps({
                 "created_from": "key_endpoint",
@@ -83,30 +129,24 @@ def create_blueprint():
             })
             
             # Store the key in database
-            key_id = social_db.create_analysis_key(
+            social_db.create_analysis_key(
+                key_id=key_id,
                 key=key,
-                analysis_id=analysis_id,
+                session_id=session_id,
                 user_id=user_id,
                 metadata=metadata
             )
             
             # Get the created key data
-            key_data = social_db.get_analysis_key(key)
-            
+            key_data_local = social_db.get_analysis_key(key)
+
             return jsonify({
                 "status": "success",
-                "message": "Analysis key created successfully",
-                "data": {
-                    "key_id": key_id,
-                    "key": key,
-                    "user_id": user_id,
-                    "analysis_id": analysis_id,
-                    "created_at": key_data['created_at'] if key_data else None
-                }
+                "server": result,
+                "local": key_data_local
             })
-
         except Exception as e:
-            print(f"Error creating analysis key: {str(e)}")
+            print(f"Error forwarding key to server: {str(e)}")
             return jsonify({
                 "status": "error",
                 "message": str(e)
@@ -118,13 +158,26 @@ def create_blueprint():
         try:
             # Get all keys for the user
             keys = social_db.get_analysis_keys_by_user(user_id)
-            
+            # Fetch server keys as well
+            server_keys = None
+            try:
+                user = social_db.get_only_user()
+                token = user.get('token') if user else None
+                if token:
+                    headers = {"Authorization": f"Bearer {token}"}
+                    resp = requests.get(key_url, headers=headers)
+                    resp.raise_for_status()
+                    server_keys = resp.json()
+            except Exception as e:
+                print(f"[DEBUG] Failed to fetch server keys: {e}")
+                server_keys = {"error": str(e)}
             return jsonify({
                 "status": "success",
-                "message": f"Found {len(keys)} keys for user {user_id}",
+                "message": f"Found {len(keys)} keys for user_id server side use_id  {user_id}",
                 "data": {
                     "user_id": user_id,
-                    "keys": keys
+                    "local": keys,
+                    "server": server_keys
                 }
             })
 
@@ -136,58 +189,74 @@ def create_blueprint():
             }), 500
 
     @social_blueprint.route('/key/<string:key>', methods=['GET'])
-    def get_analysis_key(key):
+    def get_key_by_string(key):
+        # Fetch local key
+        local_key = social_db.get_analysis_key(key)
+        # Fetch server key
+        server_key = None
         try:
-            key_data = social_db.get_analysis_key(key)
-
-            
-            if not key_data:
-                return jsonify({
-                    "status": "error",
-                    "message": "Key not found"
-                }), 404
-                
-            return jsonify({
-                "status": "success",
-                "data": key_data
-            })
-
+            user = social_db.get_only_user()
+            token = user.get('token') if user else None
+            if token:
+                headers = {"Authorization": f"Bearer {token}"}
+                resp = requests.get(f"{key_url}/{key}", headers=headers)
+                resp.raise_for_status()
+                server_key = resp.json()
         except Exception as e:
-            print(f"Error getting analysis key: {str(e)}")
-            return jsonify({
-                "status": "error",
-                "message": str(e)
-            }), 500
+            print(f"[DEBUG] Failed to fetch server key: {e}")
+            server_key = {"error": str(e)}
+        return jsonify({
+            "status": "success",
+            "data": {
+                "local": local_key,
+                "server": server_key
+            }
+        })
 
     # UPDATE
     @social_blueprint.route('/key/<string:key>', methods=['PUT'])
     def update_analysis_key(key):
         try:
             data = request.get_json()
-            status = data.get('status')
-            metadata = data.get('metadata')
-            
+            status = data.get('status') # used or not used
+            # Always set metadata to updated_from and current timestamp
+            from datetime import datetime, timezone
+            metadata = json.dumps({
+                "updated_from": "key_update_endpoint",
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            })
+            # Update local key
             if status:
                 social_db.update_analysis_key_status(key, status)
-            
-            if metadata:
-                social_db.update_analysis_key_metadata(key, json.dumps(metadata))
-            
+            social_db.update_analysis_key_metadata(key, metadata)
             # Get updated key data
             key_data = social_db.get_analysis_key(key)
-            
             if not key_data:
                 return jsonify({
                     "status": "error",
                     "message": "Key not found"
                 }), 404
-                
+            # Also update on server
+            server_response = None
+            try:
+                user = social_db.get_only_user()
+                token = user.get('token') if user else None
+                if token:
+                    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+                    patch_url = f"{key_url}/use/{key}"
+                    now_iso = datetime.now(timezone.utc).isoformat()
+                    patch_data = {"used": True, "used_at": now_iso}
+                    resp = requests.patch(patch_url, headers=headers, json=patch_data)
+                    resp.raise_for_status()
+                    server_response = resp.json()
+            except Exception as e:
+                print(f"[DEBUG] Failed to update key on server: {e}")
+                server_response = {"error": str(e)}
             return jsonify({
                 "status": "success",
-                "message": "Key updated successfully",
-                "data": key_data
+                "local": key_data,
+                "server": server_response
             })
-
         except Exception as e:
             print(f"Error updating analysis key: {str(e)}")
             return jsonify({
@@ -387,17 +456,20 @@ def create_blueprint():
 
     @social_blueprint.route('/debug_routes', methods=['GET'])
     def debug_routes():
+        prefix = '/aetheronepysocial'  # Change this if your prefix is different
         routes = []
-        for rule in social_blueprint.url_map.iter_rules():
-            routes.append({
-                "endpoint": rule.endpoint,
-                "methods": list(rule.methods),
-                "path": str(rule)
-            })
+        for rule in current_app.url_map.iter_rules():
+            if str(rule).startswith(prefix):
+                routes.append({
+                    "endpoint": rule.endpoint,
+                    "methods": list(rule.methods),
+                    "path": str(rule)
+                })
         return jsonify(routes)
 
     @social_blueprint.route('/ping', methods=['GET'])
     def ping():
+        print("[DEBUG] /ping endpoint was called!")
         try:
             return jsonify({
                 "status": "success",
@@ -407,6 +479,99 @@ def create_blueprint():
             })
         except Exception as e:
             print(f"Error in ping: {str(e)}")
+            return jsonify({
+                "status": "error",
+                "message": str(e)
+            }), 500
+
+    # SEND KEY ENDPOINT
+    # POST /aetheronepysocial/send_key
+    # Payload: {"key_data": {...}, "api_url": "https://external-server.com/api/keys", "token": "..."}
+    @social_blueprint.route('/send_key', methods=['POST'])
+    def send_key():
+        data = request.get_json()
+        key_data = data.get('key_data')
+        api_url = data.get('api_url')
+        token = data.get('token')
+        if not all([key_data, api_url, token]):
+            return jsonify({
+                "status": "error",
+                "message": "key_data, api_url, and token are required"
+            }), 400
+        try:
+            result = send_key_to_server(key_data, api_url, token)
+            return jsonify({
+                "status": "success",
+                "result": result
+            })
+        except Exception as e:
+            return jsonify({
+                "status": "error",
+                "message": str(e)
+            }), 500
+
+    # LOGIN ENDPOINT
+    # POST /aetheronepysocial/login
+    # Payload: {"email": "user@example.com", "password": "secret", "login_url": "https://external-server.com/api/login"}
+    @social_blueprint.route('/local/login', methods=['POST'])
+    def login():
+        data = request.get_json()
+        email = data.get('email')
+        password = data.get('password')
+        if not all([email, password, login_url]):
+            return jsonify({
+                "status": "error",
+                "message": "email, password, and login_url are required"
+            }), 400
+        try:
+            token = login_to_server(email, password, login_url)
+            #social_db.update_user_token(email, token)
+            return jsonify({
+                "status": "success",
+                "access_token": token
+            })
+        except Exception as e:
+            return jsonify({
+                "status": "error",
+                "message": str(e)
+            }), 500
+    
+    # REGISTER ENDPOINT
+    # POST /aetheronepysocial/register
+    # Payload: {"email": "user@example.com", "password": "secret", "username": "optional", "register_url": "https://external-server.com/api/register"}
+    @social_blueprint.route('/local/register', methods=['POST'])
+    def register():
+        data = request.get_json()
+        email = data.get('email')
+        password = data.get('password')
+        username = data.get('username', email)  # fallback to email if username not provided
+        if not all([email, password, register_url]):
+            return jsonify({
+                "status": "error",
+                "message": "email, password are required"
+            }), 400
+        try:
+            # Forward registration to external server
+            payload = {
+                "email": email,
+                "password": password,
+                "username": username
+            }
+            response = requests.post(register_url, json=payload)
+            response.raise_for_status()
+
+            response.raise_for_status()
+            #print(f"register response: {response.json()}")
+            # On success, store user locally
+            social_db.save_user(username, 
+                                email, 
+                                response.json().get("access_token"),
+                                response.json().get("user_id"))
+            return jsonify({
+                "status": "success",
+                "external_response": response.json()
+            })
+        except Exception as e:
             return jsonify({
                 "status": "error",
                 "message": str(e)
