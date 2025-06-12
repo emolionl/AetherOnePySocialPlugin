@@ -10,15 +10,6 @@ AetherOnePySocial is a plugin for the AetherOnePy platform, providing social and
 
 ## Installation
 1. **Install dependencies:**
-   ```sh
-   pip install -r requirements.txt
-   ```
-   (Run this command inside the `py/plugins/AetherOnePySocial` directory or from your project root.)
-   or
-   ```
-   pip install -r py/plugins/AetherOnePySocial/requirements.txt
-   ```
-   Still sometimes it will not work, so I implemented in to setup.py of main program.
 
    run:
    ```
@@ -97,8 +88,61 @@ AetherOnePySocial is a plugin for the AetherOnePy platform, providing social and
   same for /keys/cleanup
 
 
-  - `/aetheronepysocial/analysis` — Share analysis data nees to be tested!!!
+  - `/aetheronepysocial/analysis` — I tested all it works it posts all information to server from local
   - `/aetheronepysocial/debug_routes` — List plugin routes
+
+## Quick run on one session and share analysis
+
+- step 1
+  -- login `/aetheronepysocial/local/login` to get the token for server, it will be saved in social.db -> local sqlite db in users, not main one aetherone.db
+  -- make a new key or use some key from someone else
+    --- to make a new use this: `/aetheronepysocial/key` POST for this you need session_id from local scan, so go to aetherone and make a scan, then you will have a session id and that needs to be post it here to server.
+    lets say we made a one session with all rates with next, you go to `{{local_base_url}}/aetheronepysocial/key` as POST you add 
+    ```
+      {
+          "local_session_id": 2 <-take the session that you just made in sessions in aetheron.db
+      }
+    ```
+    I got back next:
+    ```
+      {
+        "local": {
+            "created_at": "2025-06-12 08:52:34",
+            "expires_at": null,
+            "id": 2,
+            "key": "d4f691e7-45a0-4888-a06d-a6e896cea928",
+            "key_id": 5,
+            "metadata": "{\"created_from\": \"key_endpoint\", \"timestamp\": \"2025-06-12T10:52:34.554425\"}",
+            "session_id": 2,
+            "status": "active",
+            "user_id": 4
+        },
+        "server": {
+            "key": "d4f691e7-45a0-4888-a06d-a6e896cea928",
+            "key_id": 5,
+            "local_session_id": 2,
+            "message": "New session key created successfully",
+            "status": "created",
+            "user_id": 4
+        },
+        "status": "success"
+    }
+    ```
+  -- now lets share complete analysis to server with key that we just made:
+  `{{local_base_url}}/aetheronepysocial/analysis` as POST with passing next variables
+  ```
+    {
+        "session_id" : 2,
+        "server_user_id" : 4,
+        "key" : "d4f691e7-45a0-4888-a06d-a6e896cea928",
+        "machine_id" : "hello_machine_id_1"  <- no need for this machine_id = str(uuid.getnode())
+    }
+  ```
+
+  -- `@social_blueprint.route('/send_key', methods=['POST'])` -- post just a key and see all the results on that key value, from everyone in the group
+
+
+
 
 ## Development & Debugging
 - To see only the plugin's routes, visit `/aetheronepysocial/debug_routes`.

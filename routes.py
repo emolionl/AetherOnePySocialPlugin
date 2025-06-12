@@ -10,6 +10,7 @@ from .database import SocialDatabase
 import uuid
 from dotenv import load_dotenv
 import os
+from flasgger import Swagger, swag_from
 
 # Load environment variables from .env file
 load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
@@ -95,13 +96,43 @@ def create_blueprint():
     # CREATE
     @social_blueprint.route('/key', methods=['POST'])
     def create_analysis_key():
+        """
+        Create a new analysis key for a session and user. Requires login.
+        ---
+        parameters:
+          - name: body
+            in: body
+            required: true
+            schema:
+              type: object
+              properties:
+                local_session_id:
+                  type: integer
+                  description: Local session ID
+        responses:
+          200:
+            description: Key created successfully
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                server:
+                  type: object
+                local:
+                  type: object
+          401:
+            description: Unauthorized
+          400:
+            description: Missing required fields
+        """
         try:
             data = request.get_json()
             user = social_db.get_only_user()
-            if not user:
+            if not user or not user.get('token'):
                 return jsonify({
                     "status": "error",
-                    "message": "No user found. Please login."
+                    "message": "No user or token found. Please login."
                 }), 401
             server_user_id = user.get('server_user_id')
             local_session_id = data.get('local_session_id')
@@ -155,6 +186,30 @@ def create_blueprint():
     # READ
     @social_blueprint.route('/key/<int:user_id>', methods=['GET'])
     def get_user_analysis_keys(user_id):
+        """
+        Get all analysis keys for a user (local and server).
+        ---
+        parameters:
+          - name: user_id
+            in: path
+            type: integer
+            required: true
+            description: User ID
+        responses:
+          200:
+            description: List of keys
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                message:
+                  type: string
+                data:
+                  type: object
+          401:
+            description: Unauthorized
+        """
         try:
             # Get all keys for the user
             keys = social_db.get_analysis_keys_by_user(user_id)
@@ -190,6 +245,28 @@ def create_blueprint():
 
     @social_blueprint.route('/key/<string:key>', methods=['GET'])
     def get_key_by_string(key):
+        """
+        Get a specific analysis key by key string (local and server).
+        ---
+        parameters:
+          - name: key
+            in: path
+            type: string
+            required: true
+            description: The key string
+        responses:
+          200:
+            description: Key details
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                data:
+                  type: object
+          401:
+            description: Unauthorized
+        """
         # Fetch local key
         local_key = social_db.get_analysis_key(key)
         # Fetch server key
@@ -213,9 +290,43 @@ def create_blueprint():
             }
         })
 
-    # UPDATE
     @social_blueprint.route('/key/<string:key>', methods=['PUT'])
     def update_analysis_key(key):
+        """
+        Update the status and metadata of an analysis key (local and server).
+        ---
+        parameters:
+          - name: key
+            in: path
+            type: string
+            required: true
+            description: The key string
+          - name: body
+            in: body
+            required: true
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                  description: New status (e.g., 'used')
+        responses:
+          200:
+            description: Key updated
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                local:
+                  type: object
+                server:
+                  type: object
+          404:
+            description: Key not found
+          401:
+            description: Unauthorized
+        """
         try:
             data = request.get_json()
             status = data.get('status') # used or not used
@@ -264,9 +375,30 @@ def create_blueprint():
                 "message": str(e)
             }), 500
 
-    # DELETE
     @social_blueprint.route('/key/<string:key>', methods=['DELETE'])
     def delete_analysis_key(key):
+        """
+        Delete an analysis key locally.
+        ---
+        parameters:
+          - name: key
+            in: path
+            type: string
+            required: true
+            description: The key string
+        responses:
+          200:
+            description: Key deleted
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                message:
+                  type: string
+          404:
+            description: Key not found
+        """
         try:
             if social_db.delete_analysis_key(key):
                 return jsonify({
@@ -305,11 +437,50 @@ def create_blueprint():
 
     @social_blueprint.route('/analysis', methods=['POST'])
     def share_analysis():
+        """
+        Share analysis data with the external server.
+        ---
+        parameters:
+          - name: body
+            in: body
+            required: true
+            schema:
+              type: object
+              properties:
+                session_id:
+                  type: integer
+                  description: Local session ID
+                key:
+                  type: string
+                  description: Analysis key
+        responses:
+          200:
+            description: Analysis shared successfully
+            schema:
+              type: object
+              properties:
+                message:
+                  type: string
+                external_reference:
+                  type: string
+          401:
+            description: Unauthorized
+          400:
+            description: Missing required fields
+        """
         data = request.get_json()
         session_id = data.get('session_id')
-        user_id = data.get('user_id')
+        user = social_db.get_only_user()
+        if not user or not user.get('token'):
+            return jsonify({
+                "status": "error",
+                "message": "No user or token found. Please login."
+            }), 401
+        user_id = user.get('server_user_id')
+        token = user.get('token')
+        headers = {"Authorization": f"Bearer {token}"}
         key = data.get('key')
-        machine_id = data.get('machine_id')
+        machine_id = str(uuid.getnode())
 
         if not all([session_id, user_id, key, machine_id]):
             return jsonify({
@@ -383,6 +554,7 @@ def create_blueprint():
             
                 analysis_data = {
                     "analysis": {
+                        "user_id": user_id,
                         "id": analysis.id,
                         "name": analysis.name if hasattr(analysis, 'name') else None,
                         "target_gv": analysis.target_gv if hasattr(analysis, 'target_gv') else None,
@@ -423,10 +595,8 @@ def create_blueprint():
                 }
                 session_data["analyses"].append(analysis_data)
 
-            # Update key status
-            social_db.update_analysis_key_status(key, 'used')
             
-            return jsonify({
+            data_to_send = {
                 "status": "success",
                 "message": f"Found {len(session_data)} analyses with their related data",
                 "data": {
@@ -436,13 +606,18 @@ def create_blueprint():
                     "key": key,
                     "analyses": session_data
                 }
-            })
+            }
+            data_to_send = convert_datetimes(data_to_send)
             # Send to external API
             response = requests.post(
-                api_url,
-                json=analysis_data
+                analysis_url,
+                json=data_to_send,
+                headers=headers
             )
             response.raise_for_status()
+            
+            # Update key status
+            social_db.update_analysis_key_status(key, 'used')
             
             return jsonify({
                 "message": "Analysis data shared successfully",
@@ -456,6 +631,26 @@ def create_blueprint():
 
     @social_blueprint.route('/debug_routes', methods=['GET'])
     def debug_routes():
+        """
+        List all registered routes for the AetherOnePySocial plugin.
+        ---
+        responses:
+          200:
+            description: List of registered routes
+            schema:
+              type: array
+              items:
+                type: object
+                properties:
+                  endpoint:
+                    type: string
+                  methods:
+                    type: array
+                    items:
+                      type: string
+                  path:
+                    type: string
+        """
         prefix = '/aetheronepysocial'  # Change this if your prefix is different
         routes = []
         for rule in current_app.url_map.iter_rules():
@@ -469,6 +664,24 @@ def create_blueprint():
 
     @social_blueprint.route('/ping', methods=['GET'])
     def ping():
+        """
+        Health check endpoint for the AetherOnePySocial plugin.
+        ---
+        responses:
+          200:
+            description: Pong response with plugin info and timestamp
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                message:
+                  type: string
+                plugin:
+                  type: string
+                timestamp:
+                  type: string
+        """
         print("[DEBUG] /ping endpoint was called!")
         try:
             return jsonify({
@@ -487,19 +700,51 @@ def create_blueprint():
     # SEND KEY ENDPOINT
     # POST /aetheronepysocial/send_key
     # Payload: {"key_data": {...}, "api_url": "https://external-server.com/api/keys", "token": "..."}
-    @social_blueprint.route('/send_key', methods=['POST'])
-    def send_key():
-        data = request.get_json()
-        key_data = data.get('key_data')
-        api_url = data.get('api_url')
-        token = data.get('token')
-        if not all([key_data, api_url, token]):
+    @social_blueprint.route('/send_key/<string:key>', methods=['GET'])
+    def send_key(key):
+        """
+        Get key details from the external server
+        ---
+        parameters:
+          - name: key
+            in: path
+            type: string
+            required: true
+            description: The key string to fetch
+        responses:
+          200:
+            description: Key details
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                result:
+                  type: object
+          401:
+            description: Unauthorized
+          400:
+            description: Missing key
+        """
+        if not key:
             return jsonify({
                 "status": "error",
-                "message": "key_data, api_url, and token are required"
+                "message": "Missing required 'key' parameter"
             }), 400
+
+        user = social_db.get_only_user()
+        if not user or not user.get('token'):
+            return jsonify({
+                "status": "error",
+                "message": "No user or token found. Please login."
+            }), 401
+
+        token = user.get('token')
         try:
-            result = send_key_to_server(key_data, api_url, token)
+            headers = {"Authorization": f"Bearer {token}"}
+            resp = requests.get(f"{key_url}/{key}", headers=headers)
+            resp.raise_for_status()
+            result = resp.json()
             return jsonify({
                 "status": "success",
                 "result": result
@@ -515,6 +760,37 @@ def create_blueprint():
     # Payload: {"email": "user@example.com", "password": "secret", "login_url": "https://external-server.com/api/login"}
     @social_blueprint.route('/local/login', methods=['POST'])
     def login():
+        """
+        Login to the external server and store the token locally.
+        ---
+        parameters:
+          - name: body
+            in: body
+            required: true
+            schema:
+              type: object
+              properties:
+                email:
+                  type: string
+                  description: User email
+                password:
+                  type: string
+                  description: User password
+        responses:
+          200:
+            description: Login successful
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                access_token:
+                  type: string
+          400:
+            description: Missing required fields
+          401:
+            description: Unauthorized
+        """
         data = request.get_json()
         email = data.get('email')
         password = data.get('password')
@@ -541,6 +817,38 @@ def create_blueprint():
     # Payload: {"email": "user@example.com", "password": "secret", "username": "optional", "register_url": "https://external-server.com/api/register"}
     @social_blueprint.route('/local/register', methods=['POST'])
     def register():
+        """
+        Register a new user on the external server and store the token locally.
+        ---
+        parameters:
+          - name: body
+            in: body
+            required: true
+            schema:
+              type: object
+              properties:
+                email:
+                  type: string
+                  description: User email
+                password:
+                  type: string
+                  description: User password
+                username:
+                  type: string
+                  description: Optional username
+        responses:
+          200:
+            description: Registration successful
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                external_response:
+                  type: object
+          400:
+            description: Missing required fields
+        """
         data = request.get_json()
         email = data.get('email')
         password = data.get('password')
@@ -576,5 +884,36 @@ def create_blueprint():
                 "status": "error",
                 "message": str(e)
             }), 500
+
+    def convert_datetimes(obj):
+        if isinstance(obj, dict):
+            return {k: convert_datetimes(v) for k, v in obj.items()}
+        elif isinstance(obj, list):
+            return [convert_datetimes(i) for i in obj]
+        elif isinstance(obj, datetime):
+            return obj.isoformat()
+        else:
+            return obj
+
+    # Swagger config for blueprint
+    swagger_template = {
+        "swagger": "2.0",
+        "info": {
+            "title": "AetherOnePySocial API",
+            "description": "API documentation for the AetherOnePySocial plugin.",
+            "version": "1.0.0"
+        },
+        "basePath": "/aetheronepysocial"
+    }
+    # Attach Swagger to the blueprint (Flasgger expects to be initialized on the app, so we will document endpoints with @swag_from)
+    # Index endpoint for plugin
+    @social_blueprint.route('/', methods=['GET'])
+    def index():
+        return '''<h2>Welcome to AetherOnePySocial Plugin</h2><p>See <a href=\"/aetheronepysocial/docs\">API Documentation</a></p>'''
+    # Docs endpoint for plugin
+    @social_blueprint.route('/docs', methods=['GET'])
+    def docs():
+        # Redirect to the main Swagger UI (Flasgger serves at /apidocs by default)
+        return '''<script>window.location.href='/apidocs';</script>'''
 
     return social_blueprint

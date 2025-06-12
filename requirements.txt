@@ -2,3 +2,4 @@ python-dotenv
 requests 
 rich
 icecream
+flasgger
