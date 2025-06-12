@@ -6,7 +6,7 @@ AetherOnePySocial is a plugin for the AetherOnePy platform, providing social and
 - Manage analysis keys (create, read, update, delete)
 - Share analysis data
 - Utility endpoints for debugging and cleanup
-- All endpoints are namespaced under `/aetheronepysocial` (or your configured prefix)
+- All endpoints are namespaced under `/aetheronepysocialplugin` (or your configured prefix)
 
 ## Installation
 1. **Install dependencies:**
@@ -28,18 +28,18 @@ AetherOnePySocial is a plugin for the AetherOnePy platform, providing social and
 ## Usage
 - The plugin is auto-loaded by the main AetherOnePy app if placed in the `py/plugins` directory.
 - Endpoints are available at:
-  - `/aetheronepysocial/ping` — Health check
-  - `/aetheronepysocial/local/login` — Login with email and password that you used at server (have a look at .env file for API_BASE_URL=http://localhost:8000) side usually somewhere public, you try to login via url and then you will get barrer token and then this software adds token, email, username, server_user_id (user_id on the servers side), created_at
-  - `/aetheronepysocial/local/register` — Register (should be at that url, but it is possible to do it here too) with email, username and password. For server search for your url (have a look at .env file for API_BASE_URL=http://localhost:8000) side usually somewhere public, you try to login via url and then you will get barrer token and then this software adds token, email, username, server_user_id (user_id on the servers side), created_at
+  - `/aetheronepysocialplugin/ping` — Health check
+  - `/aetheronepysocialplugin/local/login` — Login with email and password that you used at server (have a look at .env file for API_BASE_URL=http://localhost:8000) side usually somewhere public, you try to login via url and then you will get barrer token and then this software adds token, email, username, server_user_id (user_id on the servers side), created_at
+  - `/aetheronepysocialplugin/local/register` — Register (should be at that url, but it is possible to do it here too) with email, username and password. For server search for your url (have a look at .env file for API_BASE_URL=http://localhost:8000) side usually somewhere public, you try to login via url and then you will get barrer token and then this software adds token, email, username, server_user_id (user_id on the servers side), created_at
   - `/register`, `/login` - for local db there is only one user that is needed in users database check -> database.py upsert_user_token
   
-  - `/aetheronepysocial/key` POST - create a new key create_analysis_key() 
+  - `/aetheronepysocialplugin/key` POST - create a new key create_analysis_key() 
   it is important to call this 
   `{
     "local_session_id": 1
   }`
   but user has to be logged in, so you need to login, so token will be saved in local social.db users and there should be only one user! this will save copy of what is on server to local. 
-  - `/aetheronepysocial/key/<int:user_id>` GET - you will get all from that user_id from local database social.db and from server get keys/
+  - `/aetheronepysocialplugin/key/<int:user_id>` GET - you will get all from that user_id from local database social.db and from server get keys/
   ```
         {
         "data": {
@@ -74,8 +74,8 @@ AetherOnePySocial is a plugin for the AetherOnePy platform, providing social and
         "status": "success"
     }
   ```
-  - `/aetheronepysocial/key/<string:key>` GET - def get_analysis_key(key) same as above you will get from server and local, but you need to login
-  - `/aetheronepysocial/key/9e3ffbd7-e652-4d2f-a262-aeea665001e1` PUT - will update used and time on server and local in analysis_key status used
+  - `/aetheronepysocialplugin/key/<string:key>` GET - def get_analysis_key(key) same as above you will get from server and local, but you need to login
+  - `/aetheronepysocialplugin/key/9e3ffbd7-e652-4d2f-a262-aeea665001e1` PUT - will update used and time on server and local in analysis_key status used
   ```
   {
     "used": true,
@@ -88,16 +88,16 @@ AetherOnePySocial is a plugin for the AetherOnePy platform, providing social and
   same for /keys/cleanup
 
 
-  - `/aetheronepysocial/analysis` — I tested all it works it posts all information to server from local
-  - `/aetheronepysocial/debug_routes` — List plugin routes
+  - `/aetheronepysocialplugin/analysis` — I tested all it works it posts all information to server from local
+  - `/aetheronepysocialplugin/debug_routes` — List plugin routes
 
 ## Quick run on one session and share analysis
 
 - step 1
-  -- login `/aetheronepysocial/local/login` to get the token for server, it will be saved in social.db -> local sqlite db in users, not main one aetherone.db
+  -- login `/aetheronepysocialplugin/local/login` to get the token for server, it will be saved in social.db -> local sqlite db in users, not main one aetherone.db
   -- make a new key or use some key from someone else
-    --- to make a new use this: `/aetheronepysocial/key` POST for this you need session_id from local scan, so go to aetherone and make a scan, then you will have a session id and that needs to be post it here to server.
-    lets say we made a one session with all rates with next, you go to `{{local_base_url}}/aetheronepysocial/key` as POST you add 
+    --- to make a new use this: `/aetheronepysocialplugin/key` POST for this you need session_id from local scan, so go to aetherone and make a scan, then you will have a session id and that needs to be post it here to server.
+    lets say we made a one session with all rates with next, you go to `{{local_base_url}}/aetheronepysocialplugin/key` as POST you add 
     ```
       {
           "local_session_id": 2 <-take the session that you just made in sessions in aetheron.db
@@ -129,7 +129,7 @@ AetherOnePySocial is a plugin for the AetherOnePy platform, providing social and
     }
     ```
   -- now lets share complete analysis to server with key that we just made:
-  `{{local_base_url}}/aetheronepysocial/analysis` as POST with passing next variables
+  `{{local_base_url}}/aetheronepysocialplugin/analysis` as POST with passing next variables
   ```
     {
         "session_id" : 2,
@@ -145,7 +145,7 @@ AetherOnePySocial is a plugin for the AetherOnePy platform, providing social and
 
 
 ## Development & Debugging
-- To see only the plugin's routes, visit `/aetheronepysocial/debug_routes`.
+- To see only the plugin's routes, visit `/aetheronepysocialplugin/debug_routes`.
 - For hot-reload during development, use Flask's debug mode or an external watcher like `watchdog`:
   ```sh
   watchmedo auto-restart --pattern="*.py" --recursive -- python main.py --port 7000
