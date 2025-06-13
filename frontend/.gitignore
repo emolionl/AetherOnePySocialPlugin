@@ -1,0 +1,31 @@
+# Node modules
+node_modules/
+
+# Production build output
+dist/
+
+# Local env files
+.env
+.env.*
+
+# Log files
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Editor directories and files
+.idea/
+.vscode/
+.DS_Store
+
+# Optional: Mac system files
+*.DS_Store
+
+# Optional: Windows system files
+Thumbs.db
+
+# Optional: local coverage reports
+coverage/
+
+# Optional: local test output
+/test-results/
