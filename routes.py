@@ -1,4 +1,4 @@
-from flask import Blueprint, jsonify, request, current_app
+from flask import Blueprint, jsonify, request, current_app, send_from_directory
 import requests
 from services.databaseService import get_case_dao
 from datetime import datetime
@@ -11,6 +11,7 @@ import uuid
 from dotenv import load_dotenv
 import os
 from flasgger import Swagger, swag_from
+import traceback
 
 # Load environment variables from .env file
 load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
@@ -72,6 +73,10 @@ def create_blueprint():
     analysis_url = f"{API_BASE_URL}/api/analysis/share"
     cleanup_data = f"{API_BASE_URL}/api/utils/clear-data"
 
+    # Serve frontend static files
+    FRONTEND_DIST_DIR = os.path.join(os.path.dirname(__file__), 'frontend', 'dist')
+    FRONTEND_PUBLIC_DIR = os.path.join(os.path.dirname(__file__), 'frontend', 'public')
+
     # --- Auth helper functions ---
     def login_to_server(email, password, login_url):
         response = requests.post(login_url, data={
@@ -93,7 +98,6 @@ def create_blueprint():
         response.raise_for_status()
         return response.json()
 
-    # CREATE
     @social_blueprint.route('/key', methods=['POST'])
     def create_analysis_key():
         """
@@ -142,6 +146,15 @@ def create_blueprint():
                     "status": "error",
                     "message": "server_user_id, local_session_id, and token are required"
                 }), 400
+            # Check if a key already exists for this session and user
+            existing_keys = social_db.get_analysis_keys_by_user(server_user_id)
+            for k in existing_keys:
+                if k['session_id'] == local_session_id:
+                    return jsonify({
+                        "status": "exists",
+                        "message": "Key already exists for this session.",
+                        "local": k
+                    })
             key_data = {
                 "user_id": server_user_id,
                 "local_session_id": local_session_id
@@ -183,7 +196,6 @@ def create_blueprint():
                 "message": str(e)
             }), 500
 
-    # READ
     @social_blueprint.route('/key/<int:user_id>', methods=['GET'])
     def get_user_analysis_keys(user_id):
         """
@@ -418,7 +430,32 @@ def create_blueprint():
                 "message": str(e)
             }), 500
 
-    # Additional utility endpoints
+    @social_blueprint.route('/sessions', methods=['GET'])
+    def get_sessions():
+        """
+        Get all sessions (across all cases).
+        ---
+        responses:
+          200:
+            description: List of sessions
+            schema:
+              type: array
+              items:
+                type: object
+        """
+        try:
+            sessions = db.list_all_sessions()  # New method to be implemented in DAO
+            return jsonify({'sessions': [s.__dict__ for s in sessions]})
+        except Exception as e:
+            return jsonify({'status': 'error', 'message': str(e)}), 500
+        
+    @social_blueprint.route('/session/<int:session_id>', methods=['GET'])
+    def get_session(session_id):
+        session = db.get_session(session_id)
+        return jsonify(session)
+    
+    
+        
     @social_blueprint.route('/keys/cleanup', methods=['POST'])
     def cleanup_keys():
         try:
@@ -499,7 +536,7 @@ def create_blueprint():
             # Get associated analysis
             analyses = db.list_analysis(session.id)
             if not analyses:
-                return jsonify({"error": "Associated analysss not found"}), 404
+                return jsonify({"error": "Associated analyses not found, your session is empty, no rates, you only have session"}), 404
             #p(analysis, "analysis")
             # Get case data
             case = db.get_case(session.caseID)
@@ -620,6 +657,8 @@ def create_blueprint():
             social_db.update_analysis_key_status(key, 'used')
             
             return jsonify({
+                "status": "success",
+                "status_code": 200,
                 "message": "Analysis data shared successfully",
                 "external_reference": response.json().get("id")
             })
@@ -692,14 +731,12 @@ def create_blueprint():
             })
         except Exception as e:
             print(f"Error in ping: {str(e)}")
+            traceback.print_exc()
             return jsonify({
                 "status": "error",
                 "message": str(e)
             }), 500
 
-    # SEND KEY ENDPOINT
-    # POST /aetheronepysocial/send_key
-    # Payload: {"key_data": {...}, "api_url": "https://external-server.com/api/keys", "token": "..."}
     @social_blueprint.route('/send_key/<string:key>', methods=['GET'])
     def send_key(key):
         """
@@ -755,10 +792,7 @@ def create_blueprint():
                 "message": str(e)
             }), 500
 
-    # LOGIN ENDPOINT
-    # POST /aetheronepysocial/login
-    # Payload: {"email": "user@example.com", "password": "secret", "login_url": "https://external-server.com/api/login"}
-    @social_blueprint.route('/local/login', methods=['POST'])
+    @social_blueprint.route('/local/login', methods=['POST', 'OPTIONS'])
     def login():
         """
         Login to the external server and store the token locally.
@@ -812,9 +846,6 @@ def create_blueprint():
                 "message": str(e)
             }), 500
     
-    # REGISTER ENDPOINT
-    # POST /aetheronepysocial/register
-    # Payload: {"email": "user@example.com", "password": "secret", "username": "optional", "register_url": "https://external-server.com/api/register"}
     @social_blueprint.route('/local/register', methods=['POST'])
     def register():
         """
@@ -905,15 +936,86 @@ def create_blueprint():
         },
         "basePath": "/aetheronepysocial"
     }
-    # Attach Swagger to the blueprint (Flasgger expects to be initialized on the app, so we will document endpoints with @swag_from)
-    # Index endpoint for plugin
     @social_blueprint.route('/', methods=['GET'])
     def index():
-        return '''<h2>Welcome to AetherOnePySocial Plugin</h2><p>See <a href=\"/aetheronepysocial/docs\">API Documentation</a></p>'''
-    # Docs endpoint for plugin
+        # Serve the frontend index.html from dist if it exists, else from public
+        if os.path.exists(os.path.join(FRONTEND_DIST_DIR, 'index.html')):
+            return send_from_directory(FRONTEND_DIST_DIR, 'index.html')
+        else:
+            return send_from_directory(FRONTEND_PUBLIC_DIR, 'index.html')
+
+    @social_blueprint.route('/frontend/<path:filename>', methods=['GET'])
+    def frontend_static(filename):
+        # Serve static files for the frontend from dist if built, else from public
+        dist_path = os.path.join(FRONTEND_DIST_DIR, filename)
+        public_path = os.path.join(FRONTEND_PUBLIC_DIR, filename)
+        if os.path.exists(dist_path):
+            return send_from_directory(FRONTEND_DIST_DIR, filename)
+        elif os.path.exists(public_path):
+            return send_from_directory(FRONTEND_PUBLIC_DIR, filename)
+        else:
+            return jsonify({"error": "File not found"}), 404
+
     @social_blueprint.route('/docs', methods=['GET'])
     def docs():
         # Redirect to the main Swagger UI (Flasgger serves at /apidocs by default)
         return '''<script>window.location.href='/apidocs';</script>'''
+
+    @social_blueprint.route('/base_url', methods=['GET'])
+    def base_url():
+        """
+        Returns the base URL (mount point) for the plugin, so the frontend can use it for dynamic asset loading or API calls.
+        """
+        # This is hardcoded for now, but could be made dynamic if needed
+        return jsonify({"base_url": "/aetheronepysocial/"})
+
+    @social_blueprint.route('/server', methods=['POST'])
+    def add_server():
+        """
+        Add a new server URL and description to the servers table.
+        Expects JSON: {"url": "...", "description": "..."}
+        """
+        data = request.get_json()
+        url = data.get('url')
+        description = data.get('description')
+        if not url:
+            return jsonify({"status": "error", "message": "Missing 'url' field"}), 400
+        try:
+            server_id = social_db.add_server(url, description)
+            return jsonify({"status": "success", "server_id": server_id})
+        except Exception as e:
+            return jsonify({"status": "error", "message": str(e)}), 500
+
+    @social_blueprint.route('/server', methods=['GET'])
+    def list_servers():
+        """
+        List all servers from the servers table.
+        """
+        try:
+            servers = social_db.get_servers()
+            return jsonify({"status": "success", "servers": servers})
+        except Exception as e:
+            return jsonify({"status": "error", "message": str(e)}), 500
+    
+    @social_blueprint.route('/<path:filename>', methods=['GET'])
+    def serve_vue_static(filename):
+        # Serve static files for the frontend from dist if built, else from public
+        dist_path = os.path.join(FRONTEND_DIST_DIR, filename)
+        public_path = os.path.join(FRONTEND_PUBLIC_DIR, filename)
+        if os.path.exists(dist_path):
+            return send_from_directory(FRONTEND_DIST_DIR, filename)
+        elif os.path.exists(public_path):
+            return send_from_directory(FRONTEND_PUBLIC_DIR, filename)
+        else:
+            return jsonify({"error": "File not found"}), 404
+
+    @social_blueprint.route('/user', methods=['GET'])
+    def get_user_info():
+        """Return the only user from social.db, including server_user_id."""
+        user = social_db.get_only_user()
+        if user:
+            return jsonify(user)
+        else:
+            return jsonify({'status': 'error', 'message': 'No user found'}), 404
 
     return social_blueprint

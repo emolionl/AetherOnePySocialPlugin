@@ -42,6 +42,16 @@ class SocialDatabase:
             )
         ''')
 
+        # Create servers table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS servers (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                url TEXT UNIQUE NOT NULL,
+                description TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+
         self.conn.commit()
 
     def save_user(self, username: str, email: str, token: str, server_user_id: int) -> int:
@@ -191,11 +201,10 @@ class SocialDatabase:
         self.conn.close()
 
     def upsert_user_token(self, username: str, email: str, token: str, server_user_id: int = None) -> bool:
-        """
-        Only one user can exist in the users table. If a user exists, update it with the new info. Else, insert the user.
-        """
         cursor = self.conn.cursor()
-        cursor.execute('SELECT id FROM users') # only one user allowed in the users table, because there is not need for multiple users
+        # Always keep only one user: delete all others
+        cursor.execute('DELETE FROM users WHERE email != ?', (email,))
+        cursor.execute('SELECT id FROM users WHERE email = ?', (email,))
         row = cursor.fetchone()
         if row:
             # User exists, update all fields
@@ -214,4 +223,36 @@ class SocialDatabase:
                 server_id_val=', ?' if server_user_id is not None else ''
             ), ([username, email, token] + ([server_user_id] if server_user_id is not None else [])))
         self.conn.commit()
-        return True 
+        return True
+
+    def add_server(self, url: str, description: str = None) -> int:
+        cursor = self.conn.cursor()
+        cursor.execute('''
+            INSERT INTO servers (url, description) VALUES (?, ?)
+        ''', (url, description))
+        self.conn.commit()
+        return cursor.lastrowid
+
+    def get_servers(self) -> list:
+        cursor = self.conn.cursor()
+        cursor.execute('SELECT * FROM servers ORDER BY created_at DESC')
+        return [dict(row) for row in cursor.fetchall()]
+
+    def get_server_by_id(self, server_id: int) -> dict:
+        cursor = self.conn.cursor()
+        cursor.execute('SELECT * FROM servers WHERE id = ?', (server_id,))
+        row = cursor.fetchone()
+        return dict(row) if row else None
+
+    def delete_server(self, server_id: int) -> bool:
+        cursor = self.conn.cursor()
+        cursor.execute('DELETE FROM servers WHERE id = ?', (server_id,))
+        self.conn.commit()
+        return cursor.rowcount > 0
+
+    def list_all_sessions(self):
+        """Return all sessions across all cases."""
+        cursor = self.conn.cursor()
+        cursor.execute('SELECT * FROM sessions ORDER BY created DESC')
+        rows = cursor.fetchall()
+        return [self._row_to_session(row) for row in rows] 
