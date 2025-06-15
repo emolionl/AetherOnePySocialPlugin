@@ -71,6 +71,7 @@ def create_blueprint():
     logout_url = f"{API_BASE_URL}/api/auth/logout" # needs to be made on serverside logout endpoint
     key_url = f"{API_BASE_URL}/api/keys"
     analysis_url = f"{API_BASE_URL}/api/analysis/share"
+    analysis_connected_key_url = f"{API_BASE_URL}/api/analysis/key"
     cleanup_data = f"{API_BASE_URL}/api/utils/clear-data"
 
     # Serve frontend static files
@@ -232,9 +233,12 @@ def create_blueprint():
                 token = user.get('token') if user else None
                 if token:
                     headers = {"Authorization": f"Bearer {token}"}
-                    resp = requests.get(key_url, headers=headers)
+                    resp = requests.get(f"{key_url}/{user_id}", headers=headers)
                     resp.raise_for_status()
                     server_keys = resp.json()
+                    # print(f"[DEBUG]get_key_by_string token: {token}")
+                    # print(f"[DEBUG]get_key_by_string key_url: {key_url}")
+                    # print(f"[DEBUG]get_key_by_string server_key: {server_keys}")
             except Exception as e:
                 print(f"[DEBUG] Failed to fetch server keys: {e}")
                 server_keys = {"error": str(e)}
@@ -291,6 +295,7 @@ def create_blueprint():
                 resp = requests.get(f"{key_url}/{key}", headers=headers)
                 resp.raise_for_status()
                 server_key = resp.json()
+                
         except Exception as e:
             print(f"[DEBUG] Failed to fetch server key: {e}")
             server_key = {"error": str(e)}
@@ -454,8 +459,6 @@ def create_blueprint():
         session = db.get_session(session_id)
         return jsonify(session)
     
-    
-        
     @social_blueprint.route('/keys/cleanup', methods=['POST'])
     def cleanup_keys():
         try:
@@ -782,6 +785,7 @@ def create_blueprint():
             resp = requests.get(f"{key_url}/{key}", headers=headers)
             resp.raise_for_status()
             result = resp.json()
+            print(f"[DEBUG]send_key result: {result}")
             return jsonify({
                 "status": "success",
                 "result": result
@@ -792,6 +796,123 @@ def create_blueprint():
                 "message": str(e)
             }), 500
 
+    @social_blueprint.route('/analysis_for_key/<string:key>', methods=['GET'])
+    def analysis_for_key(key):
+        """
+        Get all analysis connected to a key from the external server
+        ---
+        parameters:
+          - name: key
+            in: path
+            type: string
+            required: true
+            description: The key string to fetch analysis for
+        responses:
+          200:
+            description: Analysis list
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                result:
+                  type: object
+          401:
+            description: Unauthorized
+          400:
+            description: Missing key
+        """
+        if not key:
+            return jsonify({
+                "status": "error",
+                "message": "Missing required 'key' parameter"
+            }), 400
+
+        user = social_db.get_only_user()
+        if not user or not user.get('token'):
+            return jsonify({
+                "status": "error",
+                "message": "No user or token found. Please login."
+            }), 401
+
+        token = user.get('token')
+        try:
+            headers = {"Authorization": f"Bearer {token}"}
+            resp = requests.get(f"{analysis_connected_key_url}/{key}", headers=headers)
+            try:
+                resp.raise_for_status()
+            except requests.HTTPError as http_err:
+                # If the response has JSON, forward it
+                try:
+                    error_json = resp.json()
+                    return jsonify({
+                        "status": "error",
+                        "error": error_json
+                    }), resp.status_code
+                except Exception:
+                    # If not JSON, just forward the text
+                    return jsonify({
+                        "status": "error",
+                        "message": str(http_err),
+                        "raw_response": resp.text
+                    }), resp.status_code
+
+            result = resp.json()
+            print(f"[DEBUG]analysis_for_key result: {result}")
+            return jsonify({
+                "status": "success",
+                "result": result
+            })
+        except Exception as e:
+            return jsonify({
+                "status": "error",
+                "message": str(e)
+            }), 500
+    
+    @social_blueprint.route('/check_key_exists/<string:key>', methods=['GET'])
+    def check_key_exists(key):
+        """
+        Check if a key exists and has associated sessions on the external server.
+        Forwards the response from /api/analysis/public/key/<key>.
+        """
+        if not key:
+            return jsonify({
+                "status": "error",
+                "message": "Missing required 'key' parameter"
+            }), 400
+
+        user = social_db.get_only_user()
+        if not user or not user.get('token'):
+            return jsonify({
+                "status": "error",
+                "message": "No user or token found. Please login."
+            }), 401
+
+        token = user.get('token')
+        public_key_url = f"{API_BASE_URL}/api/analysis/public/key/{key}"
+        try:
+            headers = {"Authorization": f"Bearer {token}"}
+            resp = requests.get(public_key_url, headers=headers)
+            try:
+                resp.raise_for_status()
+            except requests.HTTPError as http_err:
+                try:
+                    error_json = resp.json()
+                    return jsonify(error_json), resp.status_code
+                except Exception:
+                    return jsonify({
+                        "status": "error",
+                        "message": str(http_err),
+                        "raw_response": resp.text
+                    }), resp.status_code
+            result = resp.json()
+            return jsonify(result)
+        except Exception as e:
+            return jsonify({
+                "status": "error",
+                "message": str(e)
+            }), 500
+    
     @social_blueprint.route('/local/login', methods=['POST', 'OPTIONS'])
     def login():
         """
@@ -997,6 +1118,15 @@ def create_blueprint():
         except Exception as e:
             return jsonify({"status": "error", "message": str(e)}), 500
     
+    @social_blueprint.route('/user', methods=['GET'])
+    def get_user_info():
+        """Return the only user from social.db, including server_user_id."""
+        user = social_db.get_only_user()
+        if user:
+            return jsonify(user)
+        else:
+            return jsonify({'status': 'error', 'message': 'No user found'}), 404
+        
     @social_blueprint.route('/<path:filename>', methods=['GET'])
     def serve_vue_static(filename):
         # Serve static files for the frontend from dist if built, else from public
@@ -1009,13 +1139,21 @@ def create_blueprint():
         else:
             return jsonify({"error": "File not found"}), 404
 
-    @social_blueprint.route('/user', methods=['GET'])
-    def get_user_info():
-        """Return the only user from social.db, including server_user_id."""
-        user = social_db.get_only_user()
-        if user:
-            return jsonify(user)
-        else:
-            return jsonify({'status': 'error', 'message': 'No user found'}), 404
+    @social_blueprint.route('/plugins', methods=['GET'])
+    def list_plugins():
+        """
+        List all available plugins in the plugins directory.
+        """
+        plugins_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+        try:
+            plugins = [
+                name for name in os.listdir(plugins_dir)
+                if os.path.isdir(os.path.join(plugins_dir, name)) and not name.startswith('__')
+            ]
+            return jsonify({"status": "success", "plugins": plugins})
+        except Exception as e:
+            return jsonify({"status": "error", "message": str(e)}), 500
+
+    
 
     return social_blueprint

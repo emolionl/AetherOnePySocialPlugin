@@ -29,10 +29,8 @@
             <input type="radio" value="existing" v-model="shareMode"> Use existing key
           </label>
           <div v-if="shareMode === 'existing'" class="existing-key-select">
-            <label for="existingKey">Select Key:</label>
-            <select v-model="selectedKey" id="existingKey">
-              <option v-for="key in keys" :key="key.key" :value="key.key">{{ key.key }}</option>
-            </select>
+            <label for="existingKey">Enter Key:</label>
+            <input v-model="selectedKey" id="existingKey" type="text" placeholder="Enter or paste session key" />
           </div>
         </div>
         <div class="timeline">
@@ -78,7 +76,7 @@ export default {
   },
   methods: {
     fetchSessions() {
-      fetch('/aetheronepysocial/sessions')
+      fetch('/aetheronepysocialplugin/sessions')
         .then(res => res.json())
         .then(data => {
           this.sessions = data.sessions || []
@@ -99,7 +97,7 @@ export default {
       this.autoCloseTimeout = null
       this.shareComplete = false
       // Fetch existing keys for this session (optional, can be implemented later)
-      fetch(`/aetheronepysocial/key?session_id=${session.id}`)
+      fetch(`/aetheronepysocialplugin/key?session_id=${session.id}`)
         .then(res => res.json())
         .then(data => {
           this.keys = (data.keys || [])
@@ -129,7 +127,7 @@ export default {
       this.shareLoading = true
       if (this.shareMode === 'new') {
         this.addTimeline('Creating new key...')
-        fetch('/aetheronepysocial/key', {
+        fetch('/aetheronepysocialplugin/key', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ local_session_id: this.selectedSession.id })
@@ -144,14 +142,14 @@ export default {
                 this.addTimeline('Key created: ' + key, 'success')
               }
               this.addTimeline('Fetching user info...')
-              fetch('/aetheronepysocial/user')
+              fetch('/aetheronepysocialplugin/user')
                 .then(res => res.json())
                 .then(userData => {
                   const server_user_id = userData.server_user_id
                   this.addTimeline('User info loaded (server_user_id: ' + server_user_id + ')', 'success')
                   const machine_id = String(window.navigator.userAgent || 'browser')
                   this.addTimeline('Sharing analysis to server...')
-                  fetch('/aetheronepysocial/analysis', {
+                  fetch('/aetheronepysocialplugin/analysis', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -197,45 +195,70 @@ export default {
             this.shareLoading = false
           })
       } else {
-        this.addTimeline('Fetching user info...')
-        fetch('/aetheronepysocial/user')
+        // Check if the key exists before proceeding
+        this.addTimeline('Checking if key exists...')
+        fetch(`/aetheronepysocialplugin/check_key_exists/${this.selectedKey}`)
           .then(res => res.json())
-          .then(userData => {
-            const server_user_id = userData.server_user_id
-            this.addTimeline('User info loaded (server_user_id: ' + server_user_id + ')', 'success')
-            const machine_id = String(window.navigator.userAgent || 'browser')
-            this.addTimeline('Sharing analysis to server...')
-            fetch('/aetheronepysocial/analysis', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                session_id: this.selectedSession.id,
-                server_user_id,
-                key: this.selectedKey,
-                machine_id
-              })
-            })
-              .then(res => res.json())
-              .then(analysisData => {
-                console.log('analysisData', analysisData)
-                console.log('analysisData.status:', analysisData.status)
-                if (analysisData.status && analysisData.status.toLowerCase() === 'success') {
-                  this.addTimeline(analysisData.message || 'Analysis shared successfully!', 'success')
+          .then(data => {
+            if (data.exists) {
+              this.addTimeline('Key exists. Proceeding to share...')
+              // Now proceed with sharing as before
+              fetch('/aetheronepysocialplugin/user')
+                .then(res => res.json())
+                .then(userData => {
+                  const server_user_id = userData.server_user_id
+                  this.addTimeline('User info loaded (server_user_id: ' + server_user_id + ')', 'success')
+                  const machine_id = String(window.navigator.userAgent || 'browser')
+                  this.addTimeline('Sharing analysis to server...')
+                  fetch('/aetheronepysocialplugin/analysis', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      session_id: this.selectedSession.id,
+                      server_user_id,
+                      key: this.selectedKey,
+                      machine_id
+                    })
+                  })
+                    .then(res => res.json())
+                    .then(analysisData => {
+                      if (analysisData.status && analysisData.status.toLowerCase() === 'success') {
+                        this.addTimeline(analysisData.message || 'Analysis shared successfully!', 'success')
+                        this.shareComplete = true
+                      } else {
+                        this.addTimeline('Failed to share analysis: ' + (analysisData.message || analysisData.error || 'Unknown error'), 'error')
+                        this.shareComplete = true
+                      }
+                      this.shareLoading = false
+                    })
+                    .catch(() => {
+                      this.addTimeline('Failed to share analysis due to network error.', 'error')
+                      this.shareComplete = true
+                      this.shareLoading = false
+                    })
+                })
+                .catch(() => {
+                  this.addTimeline('Failed to get user info for sharing analysis.', 'error')
                   this.shareComplete = true
-                } else {
-                  this.addTimeline('Failed to share analysis: ' + (analysisData.message || analysisData.error || 'Unknown error'), 'error')
-                  this.shareComplete = true
+                  this.shareLoading = false
+                })
+            } else {
+              // Key does not exist, show error and do not proceed
+              if (data.explanation && data.explanation.includes('exists but has no associated sessions')) {
+                this.addTimeline('Key exists but has no associated sessions.', 'error')
+                this.addTimeline(data.explanation, 'info')
+              } else {
+                this.addTimeline('Key does not exist: ' + (data.message || 'No sessions found for this key.'), 'error')
+                if (data.explanation) {
+                  this.addTimeline(data.explanation, 'error')
                 }
-                this.shareLoading = false
-              })
-              .catch(() => {
-                this.addTimeline('Failed to share analysis due to network error.', 'error')
-                this.shareComplete = true
-                this.shareLoading = false
-              })
+              }
+              this.shareComplete = true
+              this.shareLoading = false
+            }
           })
           .catch(() => {
-            this.addTimeline('Failed to get user info for sharing analysis.', 'error')
+            this.addTimeline('Failed to check if key exists due to network error.', 'error')
             this.shareComplete = true
             this.shareLoading = false
           })

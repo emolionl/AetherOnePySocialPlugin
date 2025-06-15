@@ -25,7 +25,7 @@
 </template>
 
 <script>
-const API_BASE = '/aetheronepysocial/local';
+const API_BASE = '/aetheronepysocialplugin/local';
 
 export default {
   name: 'AuthForm',

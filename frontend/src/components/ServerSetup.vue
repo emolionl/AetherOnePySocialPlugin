@@ -66,7 +66,7 @@
 </template>
 
 <script>
-const API_BASE = '/aetheronepysocial';
+const API_BASE = '/aetheronepysocialplugin';
 
 export default {
   name: 'ServerSetup',

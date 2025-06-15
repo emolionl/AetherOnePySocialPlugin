@@ -2,17 +2,46 @@
   <div class="analysis-view">
     <h1>Analysis</h1>
     <div v-if="loadingKeys">Loading keys...</div>
-    <div v-else-if="error" class="error">{{ error }}</div>
+    <div v-else-if="error" class="error">
+      {{ error }}
+      <div v-if="errorDetails">
+        <div v-if="errorDetails.explanation">Explanation: {{ errorDetails.explanation }}</div>
+        <div v-if="errorDetails.searched_key">Searched Key: {{ errorDetails.searched_key }}</div>
+        <div v-if="errorDetails.suggestions && errorDetails.suggestions.length">
+          <h4>Suggestions:</h4>
+          <ul>
+            <li v-for="s in errorDetails.suggestions" :key="s">{{ s }}</li>
+          </ul>
+        </div>
+      </div>
+    </div>
     <div v-else>
-      <div v-if="keys.length === 0">No keys found for this user.</div>
-      <ul v-else class="key-list">
-        <li v-for="key in keys" :key="key.key" class="key-item">
-          <div class="key-header">
-            <span class="key-value">{{ key.key }}</span>
-            <button class="view-analyses-btn" @click="goToAnalyses(key.key)">View Analyses</button>
-          </div>
-        </li>
-      </ul>
+      <div v-if="localKeys.length === 0 && serverKeys.length === 0">No keys found for this user.</div>
+      <div class="key-lists">
+        <div class="local-block">
+          <h2>Local Keys</h2>
+          <ul>
+            <li v-for="key in localKeys" :key="key.id" class="key-item">
+              <div><strong>Key:</strong> {{ key.key }}</div>
+              <div><strong>Created:</strong> {{ key.created_at }}</div>
+              <div><strong>ID:</strong> {{ key.id }}</div>
+              <button class="view-analyses-btn" @click="goToAnalyses(key.key)">View Analyses</button>
+            </li>
+          </ul>
+        </div>
+        <div class="server-block">
+          <h2>Server Keys</h2>
+          <ul>
+            <li v-for="key in serverKeys" :key="key.id" class="key-item">
+              <div><strong>Key:</strong> {{ key.key }}</div>
+              <div><strong>ID:</strong> {{ key.id }}</div>
+              <div><strong>My Key:</strong> {{ key.my_key ? 'Yes' : 'No' }}</div>
+              <div><strong>Session ID:</strong> {{ key.session_id }}</div>
+              <button class="view-analyses-btn" @click="goToAnalyses(key.key)">View Analyses</button>
+            </li>
+          </ul>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -22,12 +51,11 @@ export default {
   name: 'AnalysisView',
   data() {
     return {
-      keys: [],
-      analyses: {},
-      analysisDetails: {},
+      localKeys: [],
+      serverKeys: [],
       loadingKeys: true,
-      loadingAnalysesKey: '',
       error: '',
+      errorDetails: null,
       userId: ''
     }
   },
@@ -36,20 +64,26 @@ export default {
   },
   methods: {
     fetchUserIdAndKeys() {
-      // Fetch user info to get user_id
-      fetch('/aetheronepysocial/user')
+      fetch('/aetheronepysocialplugin/user')
         .then(res => res.json())
         .then(user => {
           this.userId = user.server_user_id
-          return fetch(`/aetheronepysocial/key/${this.userId}`)
+          return fetch(`/aetheronepysocialplugin/key/${this.userId}`)
         })
         .then(res => res.json())
         .then(data => {
-          this.keys = (data.data && data.data.local) ? data.data.local : []
+          this.localKeys = (data.data && data.data.local) ? data.data.local : []
+          this.serverKeys = (data.data && data.data.server) ? data.data.server : []
           this.loadingKeys = false
         })
-        .catch(() => {
-          this.error = 'Failed to load keys.'
+        .catch((err) => {
+          if (err && err.error && err.error.detail) {
+            this.error = err.error.detail.message || 'Failed to load keys.'
+            this.errorDetails = err.error.detail
+          } else {
+            this.error = 'Failed to load keys.'
+            this.errorDetails = null
+          }
           this.loadingKeys = false
         })
     },
@@ -62,21 +96,28 @@ export default {
 
 <style scoped>
 .analysis-view {
-  max-width: 700px;
+  max-width: 900px;
   margin: 32px auto;
   background: #fff;
   border-radius: 8px;
   box-shadow: 0 2px 8px rgba(0,0,0,0.04);
   padding: 24px;
 }
-.key-list {
-  list-style: none;
-  padding: 0;
+.key-lists {
+  display: flex;
+  gap: 32px;
+}
+.local-block, .server-block {
+  flex: 1;
+  background: #f5f5f5;
+  border-radius: 4px;
+  padding: 16px;
+  font-size: 0.97em;
 }
 .key-item {
-  margin-bottom: 24px;
+  margin-bottom: 18px;
   border-bottom: 1px solid #eee;
-  padding-bottom: 12px;
+  padding-bottom: 10px;
 }
 .key-header {
   display: flex;
@@ -88,20 +129,6 @@ export default {
   font-family: monospace;
   font-size: 1.1em;
   color: #7e57c2;
-}
-.analysis-list {
-  list-style: none;
-  padding: 0 0 0 16px;
-}
-.analysis-item {
-  margin-bottom: 10px;
-}
-.analysis-detail {
-  background: #f5f5f5;
-  border-radius: 4px;
-  padding: 8px;
-  margin-top: 6px;
-  font-size: 0.95em;
 }
 .loading-indicator {
   color: #7e57c2;
