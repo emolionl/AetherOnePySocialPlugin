@@ -66,6 +66,7 @@ def create_blueprint():
     else:
         API_BASE_URL = 'http://localhost:8000'
 
+    print(f"[DEBUG]API_BASE_URL: {API_BASE_URL}")
     # API_VERSION = os.getenv('API_VERSION')
     # ANALYSIS_ENDPOINT = os.getenv('ANALYSIS_ENDPOINT')
     

@@ -26,9 +26,9 @@ router.beforeEach((to, from, next) => {
   const selectedServerId = localStorage.getItem('selectedServerId')
   const userTokens = JSON.parse(localStorage.getItem('userTokens') || '{}')
   const loggedIn = selectedServerId && userTokens[selectedServerId]
-  if (!selectedServerId && to.path !== '/setup') {
+  if (!selectedServerId && to.path !== '/setup' && to.path !== '/servers') {
     next('/setup')
-  } else if (selectedServerId && !loggedIn && to.path !== '/auth' && to.path !== '/setup') {
+  } else if (selectedServerId && !loggedIn && to.path !== '/auth' && to.path !== '/setup' && to.path !== '/servers') {
     next('/auth')
   } else if (selectedServerId && loggedIn && to.path === '/auth') {
     next('/home')
