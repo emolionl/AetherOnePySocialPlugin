@@ -23,7 +23,7 @@
       </router-link>
       <router-link to="/sessions" class="nav-item" style="text-decoration:none; color:inherit;">
         <i class="fas fa-list"></i>
-        <span>Sessions</span>
+        <span>My local Sessions</span>
       </router-link>
       <router-link to="/analysis" class="nav-item" style="text-decoration:none; color:inherit;">
         <i class="fas fa-chart-pie"></i>

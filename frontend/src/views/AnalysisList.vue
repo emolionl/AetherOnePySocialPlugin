@@ -1,5 +1,12 @@
 <template>
   <div class="analysis-list-view">
+    <nav class="breadcrumb-nav">
+      <ul class="breadcrumb">
+        <li><router-link to="/home">Home</router-link></li>
+        <li><router-link to="/analysis">Analysis</router-link></li>
+        <li>{{ shortKey }}</li>
+      </ul>
+    </nav>
     <h1>Analyses for Key: {{ key }}</h1>
     <div v-if="loading">Loading analyses...</div>
     <div v-else-if="error" class="error">{{ error }}</div>
@@ -54,6 +61,12 @@ export default {
       error: ''
     }
   },
+  computed: {
+    shortKey() {
+      if (!this.key) return '';
+      return this.key.length > 12 ? this.key.slice(0, 6) + '...' + this.key.slice(-6) : this.key;
+    }
+  },
   mounted() {
     this.fetchAnalyses()
   },
@@ -88,6 +101,32 @@ export default {
 </script>
 
 <style scoped>
+.breadcrumb-nav {
+  margin-bottom: 16px;
+}
+.breadcrumb {
+  display: flex;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  gap: 8px;
+  font-size: 1em;
+}
+.breadcrumb li {
+  color: #7e57c2;
+}
+.breadcrumb li:not(:last-child)::after {
+  content: '>';
+  margin: 0 8px;
+  color: #aaa;
+}
+.breadcrumb a {
+  color: #7e57c2;
+  text-decoration: none;
+}
+.breadcrumb a:hover {
+  text-decoration: underline;
+}
 .analysis-list-view {
   max-width: 900px;
   margin: 32px auto;

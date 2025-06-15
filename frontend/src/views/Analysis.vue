@@ -1,5 +1,11 @@
 <template>
   <div class="analysis-view">
+    <nav class="breadcrumb-nav">
+      <ul class="breadcrumb">
+        <li><router-link to="/home">Home</router-link></li>
+        <li>Analysis</li>
+      </ul>
+    </nav>
     <h1>Analysis</h1>
     <div v-if="loadingKeys">Loading keys...</div>
     <div v-else-if="error" class="error">
@@ -102,6 +108,32 @@ export default {
   border-radius: 8px;
   box-shadow: 0 2px 8px rgba(0,0,0,0.04);
   padding: 24px;
+}
+.breadcrumb-nav {
+  margin-bottom: 16px;
+}
+.breadcrumb {
+  display: flex;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  gap: 8px;
+  font-size: 1em;
+}
+.breadcrumb li {
+  color: #7e57c2;
+}
+.breadcrumb li:not(:last-child)::after {
+  content: '>';
+  margin: 0 8px;
+  color: #aaa;
+}
+.breadcrumb a {
+  color: #7e57c2;
+  text-decoration: none;
+}
+.breadcrumb a:hover {
+  text-decoration: underline;
 }
 .key-lists {
   display: flex;
