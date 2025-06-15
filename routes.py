@@ -59,10 +59,15 @@ def create_blueprint():
     social_db_path = os.path.join(os.path.dirname(__file__), 'social.db')
     social_db = SocialDatabase(social_db_path)
 
-    # Get API configuration from environment variables
-    API_BASE_URL = os.getenv('API_BASE_URL')
-    API_VERSION = os.getenv('API_VERSION')
-    ANALYSIS_ENDPOINT = os.getenv('ANALYSIS_ENDPOINT')
+    # Get API configuration from database (servers table)
+    servers = social_db.get_servers()
+    if servers and len(servers) > 0 and servers[0].get('url'):
+        API_BASE_URL = servers[0]['url']
+    else:
+        API_BASE_URL = 'http://localhost:8000'
+
+    # API_VERSION = os.getenv('API_VERSION')
+    # ANALYSIS_ENDPOINT = os.getenv('ANALYSIS_ENDPOINT')
     
     # Construct full API URL
     api_url = f"{API_BASE_URL}/"
