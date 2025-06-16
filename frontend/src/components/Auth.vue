@@ -5,27 +5,30 @@
     <form @submit.prevent="mode==='login' ? login() : register()">
       <div v-if="mode==='register'">
         <label>Username:<br>
-          <input v-model="username" required />
+          <input v-model="username" required :disabled="loading" />
         </label><br>
       </div>
       <label>Email:<br>
-        <input v-model="email" type="email" required />
+        <input v-model="email" type="email" required :disabled="loading" />
       </label><br>
       <label>Password:<br>
-        <input v-model="password" type="password" required />
+        <input v-model="password" type="password" required :disabled="loading" />
       </label><br>
-      <button type="submit">{{ mode==='login' ? 'Login' : 'Register' }}</button>
+      <button type="submit" :disabled="loading">
+        <span v-if="loading" class="loading-spinner"></span>
+        <span v-else>{{ mode==='login' ? 'Login' : 'Register' }}</span>
+      </button>
     </form>
     <div v-if="error" class="error">{{ error }}</div>
     <div class="switch-mode">
-      <span v-if="mode==='login'">Need an account? <a href="#" @click.prevent="mode='register'">Register</a></span>
-      <span v-else>Already have an account? <a href="#" @click.prevent="mode='login'">Login</a></span>
+      <span v-if="mode==='login'">Need an account? <a href="#" @click.prevent="mode='register'" :class="{ disabled: loading }">Register</a></span>
+      <span v-else>Already have an account? <a href="#" @click.prevent="mode='login'" :class="{ disabled: loading }">Login</a></span>
     </div>
   </div>
 </template>
 
 <script>
-const API_BASE = '/aetheronepysocialplugin/local';
+const API_BASE = '/aetheronepysocialplugin';
 
 export default {
   name: 'AuthForm',
@@ -35,13 +38,15 @@ export default {
       username: '',
       email: '',
       password: '',
-      error: ''
+      error: '',
+      loading: false
     }
   },
   methods: {
     login() {
       this.error = ''
-      fetch(`${API_BASE}/login`, {
+      this.loading = true
+      fetch(`${API_BASE}/api/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: this.email, password: this.password })
@@ -56,24 +61,29 @@ export default {
           }
         })
         .catch(() => { this.error = 'Login failed.' })
+        .finally(() => { this.loading = false })
     },
     register() {
       this.error = ''
-      fetch(`${API_BASE}/register`, {
+      this.loading = true
+      fetch(`${API_BASE}/api/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username: this.username, email: this.email, password: this.password })
       })
         .then(res => res.json())
         .then(data => {
-          if (data.access_token || data.token) {
-            this.saveToken(data.access_token || data.token, this.email)
+          if (data.status === 'success' && data.external_response && data.external_response.access_token) {
+            this.saveToken(data.external_response.access_token, this.email)
             this.$router.push('/home')
           } else {
-            this.error = data.message || 'Registration failed.'
+            throw new Error(data.message || 'Registration failed.')
           }
         })
-        .catch(() => { this.error = 'Registration failed.' })
+        .catch((error) => { 
+          this.error = error.message || 'Registration failed.' 
+        })
+        .finally(() => { this.loading = false })
     },
     saveToken(token, email) {
       const selectedServerId = localStorage.getItem('selectedServerId')
@@ -106,6 +116,10 @@ input {
   border-radius: 4px;
   font-size: 1em;
 }
+input:disabled {
+  background-color: #f5f5f5;
+  cursor: not-allowed;
+}
 button {
   background: #0077b5;
   color: #fff;
@@ -115,8 +129,14 @@ button {
   font-size: 1em;
   cursor: pointer;
   margin-top: 1em;
+  min-width: 120px;
+  position: relative;
 }
-button:hover {
+button:disabled {
+  background: #ccc;
+  cursor: not-allowed;
+}
+button:hover:not(:disabled) {
   background: #005983;
 }
 .error {
@@ -131,5 +151,22 @@ button:hover {
   color: #0077b5;
   cursor: pointer;
   text-decoration: underline;
+}
+.switch-mode a.disabled {
+  color: #ccc;
+  cursor: not-allowed;
+  text-decoration: none;
+}
+.loading-spinner {
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  border: 3px solid rgba(255,255,255,.3);
+  border-radius: 50%;
+  border-top-color: #fff;
+  animation: spin 1s ease-in-out infinite;
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 </style> 

@@ -980,7 +980,7 @@ def create_blueprint():
                 "message": str(e)
             }), 500
     
-    @social_blueprint.route('/local/login', methods=['POST', 'OPTIONS'])
+    @social_blueprint.route('/api/auth/login', methods=['POST', 'OPTIONS'])
     def login():
         """
         Login to the external server and store the token locally.
@@ -1034,7 +1034,7 @@ def create_blueprint():
                 "message": str(e)
             }), 500
     
-    @social_blueprint.route('/local/register', methods=['POST'])
+    @social_blueprint.route('/api/auth/register', methods=['POST'])
     def register():
         """
         Register a new user on the external server and store the token locally.
@@ -1155,7 +1155,7 @@ def create_blueprint():
         Returns the base URL (mount point) for the plugin, so the frontend can use it for dynamic asset loading or API calls.
         """
         # This is hardcoded for now, but could be made dynamic if needed
-        return jsonify({"base_url": "/aetheronepysocial/"})
+        return jsonify({"base_url": "/aetheronepysocialplugin/"})
 
     @social_blueprint.route('/server', methods=['POST'])
     def add_server():
