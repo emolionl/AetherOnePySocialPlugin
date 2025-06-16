@@ -506,7 +506,7 @@ def create_blueprint():
                 type: object
         """
         try:
-            sessions = social_db.list_all_sessions()  # New method to be implemented in DAO
+            sessions = db.list_all_sessions()  # New method to be implemented in DAO
             return jsonify({'sessions': [s.__dict__ for s in sessions]})
         except Exception as e:
             return jsonify({'status': 'error', 'message': str(e)}), 500
