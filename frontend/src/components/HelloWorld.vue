@@ -6,7 +6,7 @@
         <li>Use the navigation menu to access sessions, share analyses, and manage your keys.</li>
         <li>To get started, select a server and log in or register.</li>
         <li>After logging in, you can view and share your analysis sessions with others.</li>
-        <li>Visit the Analysis page to see all your shared analyses by key.</li>
+        <li>Visit the Analysis page to see all your shared analyses by key</li>
       </ul>
     </div>
     <div class="video-container">
