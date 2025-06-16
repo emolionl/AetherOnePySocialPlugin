@@ -22,28 +22,35 @@
       </div>
     </div>
     <div v-else>
-      <div v-if="localKeys.length === 0 && serverKeys.length === 0">No keys found for this user.</div>
+      <div v-if="mergedKeys.length === 0">No keys found for this user.</div>
       <div class="key-lists">
-        <div class="local-block">
-          <h2>Local Keys</h2>
+        <div class="merged-block">
+          <h2>All Keys (Merged)</h2>
           <ul>
-            <li v-for="key in localKeys" :key="key.id" class="key-item">
-              <div><strong>Key:</strong> {{ key.key }}</div>
-              <div><strong>Created:</strong> {{ key.created_at }}</div>
-              <div><strong>ID:</strong> {{ key.id }}</div>
-              <button class="view-analyses-btn" @click="goToAnalyses(key.key)">View Analyses</button>
-            </li>
-          </ul>
-        </div>
-        <div class="server-block">
-          <h2>Server Keys</h2>
-          <ul>
-            <li v-for="key in serverKeys" :key="key.id" class="key-item">
-              <div><strong>Key:</strong> {{ key.key }}</div>
-              <div><strong>ID:</strong> {{ key.id }}</div>
-              <div><strong>My Key:</strong> {{ key.my_key ? 'Yes' : 'No' }}</div>
-              <div><strong>Session ID:</strong> {{ key.session_id }}</div>
-              <button class="view-analyses-btn" @click="goToAnalyses(key.key)">View Analyses</button>
+            <li v-for="item in mergedKeys" :key="item.key" class="key-item">
+              <div class="key-row-flex">
+                <div class="key-details">
+                  <div><strong>Key:</strong> {{ item.key }}</div>
+                  <template v-if="item.local">
+                    <div><strong>Local Key ID:</strong> {{ item.local.id }}</div>
+                    <div><strong>Created:</strong> {{ item.local.created_at }}</div>
+                    <div><strong>Session ID:</strong> {{ item.local.session_id }}</div>
+                  </template>
+                  <template v-if="item.server">
+                    <div><strong>Server Key ID:</strong> {{ item.server.id }}</div>
+                    <div><strong>My Key:</strong> {{ item.server.my_key ? 'Yes' : 'No' }}</div>
+                    <div><strong>Server Session ID:</strong> {{ item.server.session_id }}</div>
+                    <div v-if="item.server.local_session_id"><strong>Local Session ID:</strong> {{ item.server.local_session_id }}</div>
+                  </template>
+                  <button @click="showMore[item.key] = !showMore[item.key]">
+                    {{ showMore[item.key] ? 'Hide' : 'View More' }}
+                  </button>
+                  <pre v-if="showMore[item.key]">{{ item }}</pre>
+                </div>
+                <div class="key-actions-right">
+                  <button class="view-analyses-btn" @click="goToAnalyses(item.key)">View Analyses</button>
+                </div>
+              </div>
             </li>
           </ul>
         </div>
@@ -59,10 +66,12 @@ export default {
     return {
       localKeys: [],
       serverKeys: [],
+      mergedKeys: [],
       loadingKeys: true,
       error: '',
       errorDetails: null,
-      userId: ''
+      userId: '',
+      showMore: {}
     }
   },
   mounted() {
@@ -80,6 +89,21 @@ export default {
         .then(data => {
           this.localKeys = (data.data && data.data.local) ? data.data.local : []
           this.serverKeys = (data.data && data.data.server) ? data.data.server : []
+          // Merge by key string
+          const merged = {};
+          for (const l of this.localKeys) {
+            if (!l.key) continue;
+            merged[l.key] = { key: l.key, local: l };
+          }
+          for (const s of this.serverKeys) {
+            if (!s.key) continue;
+            if (merged[s.key]) {
+              merged[s.key].server = s;
+            } else {
+              merged[s.key] = { key: s.key, server: s };
+            }
+          }
+          this.mergedKeys = Object.values(merged);
           this.loadingKeys = false
         })
         .catch((err) => {
@@ -139,7 +163,7 @@ export default {
   display: flex;
   gap: 32px;
 }
-.local-block, .server-block {
+.merged-block {
   flex: 1;
   background: #f5f5f5;
   border-radius: 4px;
@@ -185,5 +209,18 @@ export default {
 }
 .view-analyses-btn:hover {
   background: #5e35b1;
+}
+.key-row-flex {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+.key-details {
+  flex: 1;
+}
+.key-actions-right {
+  display: flex;
+  align-items: flex-start;
+  margin-left: 24px;
 }
 </style> 

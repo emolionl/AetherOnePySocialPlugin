@@ -48,9 +48,18 @@ class SocialDatabase:
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 url TEXT UNIQUE NOT NULL,
                 description TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                selected INTEGER DEFAULT 0
             )
         ''')
+
+        url_to_insert = "https://aetheronepysocial.emolio.nl"
+        description = "AetherOnePy Social Server"
+
+        cursor.execute('''
+            INSERT OR IGNORE INTO servers (url, description, selected)
+            VALUES (?, ?, ?)
+        ''', (url_to_insert, description, 1))
 
         self.conn.commit()
 
@@ -225,13 +234,22 @@ class SocialDatabase:
         self.conn.commit()
         return True
 
-    def add_server(self, url: str, description: str = None) -> int:
+    def add_server(self, url: str, description: str = None, selected: bool = False) -> int:
         cursor = self.conn.cursor()
+        if selected:
+            # Unselect all other servers
+            cursor.execute('UPDATE servers SET selected = 0')
         cursor.execute('''
-            INSERT INTO servers (url, description) VALUES (?, ?)
-        ''', (url, description))
+            INSERT INTO servers (url, description, selected) VALUES (?, ?, ?)
+        ''', (url, description, int(selected)))
         self.conn.commit()
         return cursor.lastrowid
+
+    def set_selected_server(self, server_id: int):
+        cursor = self.conn.cursor()
+        cursor.execute('UPDATE servers SET selected = 0')
+        cursor.execute('UPDATE servers SET selected = 1 WHERE id = ?', (server_id,))
+        self.conn.commit()
 
     def get_servers(self) -> list:
         cursor = self.conn.cursor()

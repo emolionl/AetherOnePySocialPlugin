@@ -40,12 +40,13 @@
             <tr><th>URL</th><th>Description</th><th>Actions</th></tr>
           </thead>
           <tbody>
-            <tr v-for="s in servers" :key="s.id">
+            <tr v-for="s in servers" :key="s.id" :class="{selected: s.selected}">
               <td>{{ s.url }}</td>
               <td>{{ s.description }}</td>
               <td>
                 <button @click="startEdit(s)">Edit</button>
                 <button @click="deleteServer(s.id)">Delete</button>
+                <span v-if="s.selected" style="color: #2ecc40; font-weight: bold; margin-left: 8px;">(Selected)</span>
               </td>
             </tr>
           </tbody>
@@ -99,12 +100,14 @@ export default {
       fetch(`${API_BASE}/server`)
         .then(res => res.json())
         .then(data => {
-          this.servers = (data.servers || [])
+          const sel = localStorage.getItem('selectedServerId')
+          this.servers = (data.servers || []).map(s => ({
+            ...s,
+            selected: sel && String(s.id) === String(sel)
+          }))
           this.loading = false
           if (this.servers.length > 0) {
-            // Try to restore selected server from localStorage
-            const sel = localStorage.getItem('selectedServerId')
-            if (sel && this.servers.find(s => s.id == sel)) {
+            if (sel && this.servers.find(s => String(s.id) === String(sel))) {
               this.selectedServerId = Number(sel)
             } else {
               this.selectedServerId = this.servers[0].id
@@ -232,5 +235,8 @@ button:hover {
 .error {
   color: #d93025;
   margin-top: 1em;
+}
+.servers-table tr.selected {
+  background: #e8f5e9;
 }
 </style> 

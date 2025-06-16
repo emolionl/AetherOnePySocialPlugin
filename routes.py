@@ -50,7 +50,6 @@ def p(obj, title="Debug Object"):
     except Exception as e:
         print(f"Error printing object: {str(e)}")
                 
-
 def create_blueprint():
     print("[DEBUG] Creating AetherOnePySocial blueprint...")
     social_blueprint = Blueprint('social', __name__)
@@ -100,10 +99,20 @@ def create_blueprint():
         return response.json().get("access_token")
 
     def send_key_to_server(key_data, api_url, token):
-        headers = {"Authorization": f"Bearer {token}"}
-        response = requests.post(api_url, json=key_data, headers=headers)
-        response.raise_for_status()
-        return response.json()
+        headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+        print(f"[DEBUG]send_key_to_server url: {api_url}")
+        print(f"[DEBUG]send_key_to_server headers: {headers}")
+        print(f"[DEBUG]send_key_to_server payload: {key_data}")
+        try:
+            response = requests.post(api_url, json=key_data, headers=headers)
+            print(f"[DEBUG]send_key_to_server response status: {response.status_code}")
+            print(f"[DEBUG]send_key_to_server response body: {response.text}")
+            response.raise_for_status()
+            print(f"[DEBUG]send_key_to_server response JSON: {response.json()}")
+            return response.json()
+        except Exception as e:
+            print(f"[DEBUG]send_key_to_server exception: {e}")
+            raise
 
     @social_blueprint.route('/key', methods=['POST'])
     def create_analysis_key():
@@ -141,6 +150,7 @@ def create_blueprint():
             data = request.get_json()
             user = social_db.get_only_user()
             if not user or not user.get('token'):
+                print("[DEBUG]create_analysis_key: No user or token found")
                 return jsonify({
                     "status": "error",
                     "message": "No user or token found. Please login."
@@ -149,14 +159,15 @@ def create_blueprint():
             local_session_id = data.get('local_session_id')
             token = user.get('token')
             if not all([server_user_id, local_session_id, token]):
+                print(f"[DEBUG]create_analysis_key: Missing required fields server_user_id={server_user_id}, local_session_id={local_session_id}, token={token}")
                 return jsonify({
                     "status": "error",
                     "message": "server_user_id, local_session_id, and token are required"
                 }), 400
-            # Check if a key already exists for this session and user
             existing_keys = social_db.get_analysis_keys_by_user(server_user_id)
             for k in existing_keys:
                 if k['session_id'] == local_session_id:
+                    print(f"[DEBUG]create_analysis_key: Key already exists for session_id={local_session_id}")
                     return jsonify({
                         "status": "exists",
                         "message": "Key already exists for this session.",
@@ -166,20 +177,33 @@ def create_blueprint():
                 "user_id": server_user_id,
                 "local_session_id": local_session_id
             }
-            # Forward to external server
-            result = send_key_to_server(key_data, key_url, token)
-            key = result.get('key')
-            key_id = result.get('key_id')
-            session_id = result.get('local_session_id') #local session_id from aetherone sessions
-            user_id = result.get('user_id')
+            print(f"[DEBUG]create_analysis_key key_data: {key_data}")
+            print(f"[DEBUG]create_analysis_key key_url: {key_url}")
+            print(f"[DEBUG]create_analysis_key token: {token}")
+            try:
+                result = send_key_to_server(key_data, key_url, token)
+                print(f"[DEBUG] External server response: {result}")
+                key = result.get('key')
+                key_id = result.get('key_id')
+                session_id = result.get('local_session_id')
+                user_id = result.get('user_id')
 
-            # Create metadata with timestamp
+                if not key_id:
+                    print(f"[DEBUG] No key_id in external server response: {result}")
+                    return jsonify({
+                        "status": "error",
+                        "message": "No key_id returned from external server"
+                    }), 500
+            except Exception as e:
+                print(f"[DEBUG]create_analysis_key: Exception from send_key_to_server: {e}")
+                return jsonify({
+                    "status": "error",
+                    "message": str(e)
+                }), 500
             metadata = json.dumps({
                 "created_from": "key_endpoint",
                 "timestamp": datetime.now().isoformat()
             })
-            
-            # Store the key in database
             social_db.create_analysis_key(
                 key_id=key_id,
                 key=key,
@@ -187,17 +211,14 @@ def create_blueprint():
                 user_id=user_id,
                 metadata=metadata
             )
-            
-            # Get the created key data
             key_data_local = social_db.get_analysis_key(key)
-
             return jsonify({
                 "status": "success",
                 "server": result,
                 "local": key_data_local
             })
         except Exception as e:
-            print(f"Error forwarding key to server: {str(e)}")
+            print(f"[DEBUG]create_analysis_key: Outer exception: {e}")
             return jsonify({
                 "status": "error",
                 "message": str(e)
@@ -229,41 +250,57 @@ def create_blueprint():
           401:
             description: Unauthorized
         """
-        try:
-            # Get all keys for the user
-            keys = social_db.get_analysis_keys_by_user(user_id)
-            # Fetch server keys as well
-            server_keys = None
-            try:
-                user = social_db.get_only_user()
-                token = user.get('token') if user else None
-                if token:
-                    headers = {"Authorization": f"Bearer {token}"}
-                    resp = requests.get(f"{key_url}/{user_id}", headers=headers)
-                    resp.raise_for_status()
-                    server_keys = resp.json()
-                    # print(f"[DEBUG]get_key_by_string token: {token}")
-                    # print(f"[DEBUG]get_key_by_string key_url: {key_url}")
-                    # print(f"[DEBUG]get_key_by_string server_key: {server_keys}")
-            except Exception as e:
-                print(f"[DEBUG] Failed to fetch server keys: {e}")
-                server_keys = {"error": str(e)}
-            return jsonify({
-                "status": "success",
-                "message": f"Found {len(keys)} keys for user_id server side use_id  {user_id}",
-                "data": {
-                    "user_id": user_id,
-                    "local": keys,
-                    "server": server_keys
-                }
-            })
 
-        except Exception as e:
-            print(f"Error getting user analysis keys: {str(e)}")
-            return jsonify({
-                "status": "error",
-                "message": str(e)
-            }), 500
+        keys = social_db.get_analysis_keys_by_user(user_id)
+        # Fetch server keys as well
+        server_keys = None
+
+        user = social_db.get_only_user()
+        # print(f"[DEBUG]get_user_analysis_keys user: {user}")
+        token = user.get('token') if user else None
+        # print(f"[DEBUG]get_user_analysis_keys token: {token}")
+        if token:
+            url = f"{key_url}/{user_id}"
+            headers = {
+                "Authorization": f"Bearer {token.strip()}",
+                "Accept": "application/json",
+                "User-Agent": "python-requests/2.25.1"
+            }
+            # print(f"[DEBUG] Requesting: {url}")
+            # print(f"[DEBUG] Headers: {headers}")
+
+            try:
+                resp = requests.get(url, headers=headers)
+                print(f"[DEBUG] Status: {resp.status_code}")
+                print(f"[DEBUG] Response body: {resp.text}")
+
+                if resp.status_code == 200:
+                    server_keys = resp.json()
+                elif resp.status_code == 404:
+                    # No session keys found for this user
+                    print("[DEBUG] No session keys found for user")
+                    server_keys = []
+                elif resp.status_code == 400:
+                    # Invalid key format
+                    print("[DEBUG] Invalid key format")
+                    server_keys = []
+                else:
+                    # For other errors, raise
+                    resp.raise_for_status()
+                    server_keys = []
+            except Exception as e:
+                print(f"[DEBUG] HTTPS request failed: {e}")
+                server_keys = []
+        #print(f"[DEBUG]get_user_analysis_keys server_keys: {server_keys}")
+        return jsonify({
+            "status": "success",
+            "message": f"Found {len(keys)} keys for user_id server side use_id  {user_id}",
+            "data": {
+                "user_id": user_id,
+                "local": keys,
+                "server": server_keys
+            }
+        })
 
     @social_blueprint.route('/key/<string:key>', methods=['GET'])
     def get_key_by_string(key):
@@ -297,8 +334,18 @@ def create_blueprint():
             user = social_db.get_only_user()
             token = user.get('token') if user else None
             if token:
-                headers = {"Authorization": f"Bearer {token}"}
-                resp = requests.get(f"{key_url}/{key}", headers=headers)
+                url = f"{key_url}/{key}"
+                headers = {
+                    "Authorization": f"Bearer {token.strip()}",
+                    "Accept": "application/json",
+                    "User-Agent": "python-requests/2.25.1"
+                }
+                print(f"[DEBUG] Requesting: {url}")
+                print(f"[DEBUG] Headers: {headers}")
+
+                resp = requests.get(url, headers=headers)
+                print(f"[DEBUG] Status: {resp.status_code}")
+                print(f"[DEBUG] Response body: {resp.text}")
                 resp.raise_for_status()
                 server_key = resp.json()
                 
@@ -376,11 +423,15 @@ def create_blueprint():
                 user = social_db.get_only_user()
                 token = user.get('token') if user else None
                 if token:
-                    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
-                    patch_url = f"{key_url}/use/{key}"
+                    url = f"{key_url}/use/{key}"
+                    headers = {
+                        "Authorization": f"Bearer {token.strip()}",
+                        "Accept": "application/json",
+                        "User-Agent": "python-requests/2.25.1"
+                    }
                     now_iso = datetime.now(timezone.utc).isoformat()
                     patch_data = {"used": True, "used_at": now_iso}
-                    resp = requests.patch(patch_url, headers=headers, json=patch_data)
+                    resp = requests.patch(url, headers=headers, json=patch_data)
                     resp.raise_for_status()
                     server_response = resp.json()
             except Exception as e:
@@ -787,8 +838,18 @@ def create_blueprint():
 
         token = user.get('token')
         try:
-            headers = {"Authorization": f"Bearer {token}"}
-            resp = requests.get(f"{key_url}/{key}", headers=headers)
+            url = f"{key_url}/{key}"
+            headers = {
+                "Authorization": f"Bearer {token.strip()}",
+                "Accept": "application/json",
+                "User-Agent": "python-requests/2.25.1"
+            }
+            print(f"[DEBUG] Requesting: {url}")
+            print(f"[DEBUG] Headers: {headers}")
+
+            resp = requests.get(url, headers=headers)
+            print(f"[DEBUG] Status: {resp.status_code}")
+            print(f"[DEBUG] Response body: {resp.text}")
             resp.raise_for_status()
             result = resp.json()
             print(f"[DEBUG]send_key result: {result}")
@@ -1159,7 +1220,5 @@ def create_blueprint():
             return jsonify({"status": "success", "plugins": plugins})
         except Exception as e:
             return jsonify({"status": "error", "message": str(e)}), 500
-
-    
 
     return social_blueprint

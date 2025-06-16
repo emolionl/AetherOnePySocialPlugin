@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html>
+<body>
+<script>
+fetch('/aetheronepysocialplugin/ping')
+  .then(r => {
+    if (!r.ok) throw new Error('HTTP status ' + r.status);
+    return r.json();
+  })
+  .then(console.log)
+  .catch(e => {
+    console.error('Fetch failed:', e);
+  });
+</script>
+</body>
+</html> 

@@ -29,6 +29,10 @@
         <i class="fas fa-chart-pie"></i>
         <span>Shared Analysis</span>
       </router-link>
+      <router-link to="/keys" class="nav-item" style="text-decoration:none; color:inherit;">
+        <i class="fas fa-key"></i>
+        <span>Keys</span>
+      </router-link>
       <div class="nav-item" @click="$router.push('/servers')" style="position:relative;">
         <i class="fas fa-server"></i>
         <span>Servers</span>

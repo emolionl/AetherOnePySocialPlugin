@@ -5,6 +5,7 @@ import AuthForm from './components/Auth.vue'
 import SessionsView from './views/Sessions.vue'
 import AnalysisView from './views/Analysis.vue'
 import AnalysisListView from './views/AnalysisList.vue'
+import KeysView from './views/Keys.vue'
 
 const routes = [
   { path: '/setup', component: ServerSetup },
@@ -14,6 +15,7 @@ const routes = [
   { path: '/sessions', component: SessionsView },
   { path: '/analysis', component: AnalysisView },
   { path: '/analysis/:key', component: AnalysisListView },
+  { path: '/keys', component: KeysView },
   { path: '/', redirect: '/home' }
 ]
 
