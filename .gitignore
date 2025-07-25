@@ -9,4 +9,5 @@ __pycache__/
 env/
 venv/
 .idea/
-.vscode/ 
+.vscode/
+social.db

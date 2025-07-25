@@ -1,0 +1,8 @@
+{
+    "name":"AetherOnePySocial",
+    "author":"emolionl",
+    "repository":"https://github.com/emolionl/AetherOnePySocialPlugin",
+    "ui":"aetheronepysocialplugin",
+    "image":"https://raw.githubusercontent.com/emolionl/AetherOnePySocialPlugin/refs/heads/master/plugin.png",
+    "description":"Share your sessions and analysis with other users using a unique token for identification"
+}
