@@ -2,6 +2,6 @@
     "name": "AetherOnePySocialPlugin",
     "author": "Davor Radic",
     "description": "share your results",
-    "ui": "AetherOnePySocialPlugin",
+    "ui": "aetheronepysocialplugin",
     "image": "assets/images/social.png"
 }
